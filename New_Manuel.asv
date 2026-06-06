@@ -1,0 +1,388 @@
+%% Pre Skirpt
+clear;
+close all;
+clc
+
+%% Load Tire data
+addpath("0_Tire_test_data\0_Reifen_43075\")
+
+tirepath = pwd;
+tydexdir = dir(fullfile(tirepath,"Tiredata_prefilterd","*.mat"));
+tydexstr = join([{tydexdir.folder}',{tydexdir.name}'],filesep);
+
+for i = 1:1:numel(tydexstr)
+    tire_data_raw(i) = load(string(tydexstr(i)));
+end
+
+clearvars -except tire_data_raw
+
+%% tireData Object processing
+% Create Tire object
+[td_1] = create_Tire_object;
+
+% Populate (Auskommentiert für Geschwindigkeit)
+[td_1] = populate_tire_object(td_1, tire_data_raw(2),'TTC_Lateral');
+
+% Plotten der Rohfeifentestdaten
+plotTireStatus(td_1, deg2rad(0.5), 0.02, 101)
+
+
+%% Preprocess Tire Data
+% Split according to Elapsed Time Jumps
+td_1 = split(td_1,"et");
+
+% "Filter" by assigning the mean of Fz channel to the whole of Fz
+% td_1 = mean(td_1, "Fz");
+
+% Downsample data for quicker Fits but less Quality for high Downsampling
+td_1 = downsample(td_1, 2);
+
+% Filter Data Fx
+filter_window = 10;
+td_1 = filter(td_1, channels="Fx", k=filter_window);
+
+% Filter Data Fy
+filter_window = 20;
+td_1 = filter(td_1, channels="Fy", k=filter_window);
+
+plotTireStatus(td_1(1), deg2rad(0.5), 0.02, 51)
+plotTireStatusWithSplits(td_1, deg2rad(0.5), 0.02, 51);
+
+%% Functions
+function [tdnew] = create_Tire_object
+tdnew = tireData();                         % Anlegen des Objects
+tdnew = tdnew.coordinateTransform("SAE");   % Definition des Koordinaten systems, später überschrieben
+end
+
+function [tdnew] = populate_tire_object(tdnew, fsData,TestMethod)
+%% Eingangsvariabeln
+% TestMethod = Welche Testdaten werden angeschaut, "Lateral" für Drive
+% Brake und Longitudinal für Cornering
+
+%% Ausgangsvariabeln
+% tdnew ist jetzt ein befülltes tiredata object
+
+%% Function Code
+
+% Preperation
+[row, ~] = size(fsData.MX);
+
+% --- Messdaten und Achsen (Umrechnung in SI-Einheiten) ---
+tdnew.et                = fsData.ET;                        % Zeit [s]
+tdnew.seget             = fsData.ET;                        % Segmentzeit [s]
+tdnew.segment           = ones(row, 1);                     % Segment-ID (Platzhalter: 1)
+tdnew.measnumb          = linspace(1, row, row);            % Messpunktnummer
+tdnew.Fx                = fsData.FX;                        % Längskraft [N]
+tdnew.Fy                = fsData.FY;                        % Seitenkraft [N]
+tdnew.Fz                = fsData.FZ;                        % Normalkraft [N]
+tdnew.Mx                = fsData.MX;                        % Überrollmoment (Mx) [Nm]
+tdnew.My                = zeros(row, 1);                    % Kippmoment (My) [Nm] (Zero-Placeholder)
+tdnew.Mz                = fsData.MZ;                        % Ausrichtendes Moment (Mz) [Nm]
+tdnew.IP                = fsData.P * 1000;                  % Inflationsdruck [Pa] (von kPa)
+tdnew.alpha             = (pi/180) * fsData.SA;             % Schräglaufwinkel [rad] (von deg)
+tdnew.gamma             = (pi/180) * fsData.IA;             % Sturzwinkel [rad] (von deg)
+tdnew.kappa             = fsData.SL;                        % Längsschlupf [-]
+tdnew.phit              = zeros(row, 1);                    % Wegrollwinkel [rad] (Zero-Placeholder)
+tdnew.V                 = (1000 / 3600) * (fsData.V);       % Geschwindigkeit [m/s] (von km/h)
+tdnew.omega             = (1 / 60) * (fsData.N);            % Radwinkelgeschw. [U/s] (von U/min)
+
+% --- Statische Metadaten (Reifendimensionen und Testbedingungen) ---
+tdnew.TestMethod        = TestMethod;                       % Testtyp (Wichtig für Fx/Fy-Trennung)
+tdnew.TireSize          = "152.4/67R10";                    % Reifengröße, (Technisch nicht relevant, platzhalter stehen gelassen)
+tdnew.SectionWidth      = 152.4000;                         % Schnittbreite [mm]
+tdnew.AspectRatio       = 67;                               % Querschnittsverhältnis [%]
+tdnew.RimDiameter       = 10;                               % Felgendurchmesser [inch]
+tdnew.OverallDiameter   = 0.472;                            % Gesamtdurchmesser [m]
+tdnew.LoadIndex         = 90;                               % Lastindex
+tdnew.SpeedSymbol       = "V";                              % Geschwindigkeitssymbol
+tdnew.TestFacility      = "FS Tire Data";                   % Testeinrichtung (Metadaten)
+tdnew.TestMachine       = "MTS Flat-Trac LTRe";             % Testmaschine (Metadaten)
+tdnew.RimWidth          = 7;                                % Felgenbreite [inch]
+tdnew.Surface           = "120 3Mite";                      % Oberflächentyp
+tdnew.SurfaceCondition  = "Dry";                            % Oberflächenzustand
+tdnew.TestDate          = "24-Apr-2020 14:55:29";           % Testdatum/Zeit
+tdnew                   = tdnew.coordinateTransform("ISO"); % Konvertierung zu ISO-Standardachse
+
+end
+
+function plotTireStatusWithSplits(tireObj, threshold_SA, threshold_SL, filter_window, parentHandle)
+% PLOTTIRESTATUSWITHSPLITS Plottet ein Array von Tire-Objekten hintereinander.
+%
+% EINGABE:
+%   tireObj:       Array von Objekten (z.B. 62x1) oder Einzelobjekt
+%   threshold_SA:  Grenzwert Alpha
+%   threshold_SL:  Grenzwert Kappa
+%   filter_window: Fenstergröße Glättung
+
+%% 1. Standardwerte
+if nargin < 5, parentHandle = []; end
+if nargin < 4, filter_window = 51; end
+if nargin < 3, threshold_SL = 0.005; end
+if nargin < 2, threshold_SA = 0.2; end
+if mod(filter_window, 2) == 0, filter_window = filter_window + 1; end
+
+%% 2. DATEN SAMMELN (Concatenation Loop)
+% Wir gehen durch alle Elemente im Array und sammeln die Daten in Cells
+
+nFiles = numel(tireObj); % Anzahl der Objekte (z.B. 62)
+
+% Cell-Arrays zum Zwischenspeichern
+c_alpha = cell(nFiles, 1);
+c_kappa = cell(nFiles, 1);
+c_v     = cell(nFiles, 1);
+c_et    = cell(nFiles, 1);
+
+% --- Loop über alle 62 Dateien ---
+for i = 1:nFiles
+    currentObj = tireObj(i);
+
+    % Daten holen (mit lokaler Hilfsfunktion s.u.)
+    a = tryGetProp(currentObj, {'alpha', 'Alpha', 'SA', 'sa', 'ALPHAR'});
+    k = tryGetProp(currentObj, {'kappa', 'Kappa', 'SR', 'sr', 'SL', 'sl'});
+    v = tryGetProp(currentObj, {'V', 'v', 'Vx', 'vx', 'speed'});
+    t = tryGetProp(currentObj, {'et', 'ET', 'time', 'Time', 't'});
+
+    % Fallbacks für leere/fehlende Daten im aktuellen Objekt
+    len = max([length(a), length(k)]);
+    if isempty(a), a = zeros(len,1); end
+    if isempty(k), k = zeros(len,1); end
+    if isempty(v), v = zeros(len,1); end
+    if isempty(t), t = (1:len)'; end % Dummy Zeit falls fehlt
+
+    % Auf gleiche Länge bringen (min length)
+    nMin = min([length(a), length(k), length(v), length(t)]);
+    if nMin > 0
+        c_alpha{i} = a(1:nMin);
+        c_kappa{i} = k(1:nMin);
+        c_v{i}     = v(1:nMin);
+        c_et{i}    = t(1:nMin);
+    end
+end
+
+% --- Alles zusammenfügen (Vertcat) ---
+% Aus vielen kleinen Vektoren werden 4 riesige Vektoren
+alpha   = vertcat(c_alpha{:});
+kappa   = vertcat(c_kappa{:});
+v_sig   = vertcat(c_v{:});
+et_data = vertcat(c_et{:});
+
+if isempty(alpha)
+    error('Das Objekt-Array scheint keine validen Daten zu enthalten.');
+end
+
+total_n = length(alpha);
+x_axis  = 1:total_n; % Globale Index-Achse
+
+%% 3. Splits finden (Sägezahn + Objekt-Übergänge)
+% Ein Split ist dort, wo ET resettet wird (diff < 0)
+% Da wir die Objekte hintereinander gehängt haben, passiert das
+% automatisch zwischen Objekt 1 und 2.
+
+split_indices = find(diff(et_data) < -0.1) + 1;
+test_boundaries = [1; split_indices; total_n];
+
+%% 4. Status Berechnung (Global)
+raw_status = zeros(total_n, 1);
+TYPE_INAKTIV=0; TYPE_LATERAL=1; TYPE_LONGITUDINAL=2; TYPE_COMBINED=3;
+
+% Vectorized calculation (schneller als For-Loop bei vielen Daten)
+is_lat  = abs(alpha) > threshold_SA;
+is_long = abs(kappa) > threshold_SL;
+
+raw_status(is_lat)  = TYPE_LATERAL;
+raw_status(is_long) = TYPE_LONGITUDINAL;
+raw_status(is_lat & is_long) = TYPE_COMBINED;
+% Rest bleibt 0 (Inaktiv)
+
+smooth_status = medfilt1(raw_status, filter_window);
+
+%% 5. Plotting
+if isempty(parentHandle)
+    f = figure('Name', ['Full Analysis (' num2str(nFiles) ' Files)'], 'NumberTitle', 'off');
+    f.Position(3:4) = [1200 900];
+    target = f;
+else
+    target = parentHandle;
+end
+
+t = tiledlayout(target, 5, 1, 'TileSpacing', 'compact');
+ax_list = gobjects(5,1);
+
+% Helper Macro für Plots
+ax_list(1) = nexttile; plot(x_axis, alpha); ylabel('Alpha'); grid on; title('Slip Angle');
+yline([threshold_SA, -threshold_SA], 'r--');
+
+ax_list(2) = nexttile; plot(x_axis, kappa); ylabel('Kappa'); grid on; title('Slip Ratio');
+yline([threshold_SL, -threshold_SL], 'm--');
+
+ax_list(3) = nexttile; plot(x_axis, v_sig, 'Color', '#D95319'); ylabel('V'); grid on; title('Velocity');
+
+ax_list(4) = nexttile; plot(x_axis, et_data, 'Color', '#77AC30'); ylabel('ET [s]'); grid on; title('Time Segments');
+
+ax_list(5) = nexttile; hold on;
+plot(x_axis, raw_status, '.', 'Color', [0.8 0.8 0.8]); % Punkt statt Kreis für Performance
+plot(x_axis, smooth_status, 'k-', 'LineWidth', 1.5);
+ylabel('Status'); xlabel(['Datenpunkte (Total: ' num2str(total_n) ')']);
+yticks(0:3); yticklabels({'Inaktiv', 'Lat', 'Long', 'Comb'});
+ylim([-0.5 3.5]); grid on;
+
+linkaxes(ax_list, 'x');
+xlim([1 total_n]);
+
+%% 6. Visualisierung der Splits
+if ~isempty(split_indices)
+    % Linien zeichnen
+    for ax = ax_list'
+        xline(ax, split_indices, ':k', 'Alpha', 0.4); % Leichtere Linien für Performance
+    end
+
+    % Labels (Nur jedes 5. Label zeichnen, sonst wird es bei 62 Tests unleserlich)
+    label_step = max(1, round(nFiles / 15)); % Automatische Dichte der Labels
+
+    for k = 1:label_step:(length(test_boundaries)-1)
+        idx_start = test_boundaries(k);
+        idx_end   = test_boundaries(k+1);
+        idx_mid   = (idx_start + idx_end) / 2;
+
+        text(ax_list(1), idx_mid, double(max(alpha)), num2str(k), ...
+            'HorizontalAlignment', 'center', ...
+            'FontSize', 8, 'BackgroundColor', 'w', 'EdgeColor', 'none');
+    end
+end
+end
+
+function val = tryGetProp(obj, candidates)
+val = [];
+% Robust check for property or field
+for k = 1:length(candidates)
+    fn = candidates{k};
+    if (isobject(obj) && isprop(obj, fn)) || (isstruct(obj) && isfield(obj, fn))
+        val = obj.(fn);
+        return;
+    end
+end
+end
+
+function plotTireStatus(tireObj, threshold_SA, threshold_SL, filter_window)
+% PLOTTIRESTATUS Visualisiert Alpha, Kappa, V, ET und den Status.
+%
+% EINGABE:
+%   tireObj:       Ein einzelnes tireData-Objekt (z.B. td(1))
+%   threshold_SA:  Grenzwert Alpha [deg] (Standard: 0.2)
+%   threshold_SL:  Grenzwert Kappa [-]   (Standard: 0.005)
+%   filter_window: Fenstergröße Glättung (Standard: 51)
+
+%% Unpack Data
+alpha = tireObj.alpha;
+kappa = tireObj.kappa;
+v_sig = tireObj.V;
+
+% Zeitachse und ET-Daten
+et_data = tireObj.et;
+t_axis = et_data;
+x_label_str = 'Zeit [s]';
+Fz_data = tireObj.Fz;
+
+%% Calculation
+% Längen anpassen (Sicherstellen, dass alle Vektoren gleich lang sind)
+n = min([length(alpha), length(kappa), length(t_axis), length(v_sig), length(et_data)]);
+
+alpha   = alpha(1:n);
+kappa   = kappa(1:n);
+v_sig   = v_sig(1:n);
+et_data = et_data(1:n);
+t_axis  = t_axis(1:n);
+
+%% 3. Status berechnen
+raw_status = zeros(n, 1);
+
+TYPE_INAKTIV = 0;
+TYPE_LATERAL = 1;
+TYPE_LONGITUDINAL = 2;
+TYPE_COMBINED = 3;
+
+for i = 1:n
+    is_lat = abs(alpha(i)) > threshold_SA;
+    is_long = abs(kappa(i)) > threshold_SL;
+    if is_lat && is_long
+        raw_status(i) = TYPE_COMBINED;
+    elseif is_lat
+        raw_status(i) = TYPE_LATERAL;
+    elseif is_long
+        raw_status(i) = TYPE_LONGITUDINAL;
+    else
+        raw_status(i) = TYPE_INAKTIV;
+    end
+end
+
+% Glättung
+smooth_status = medfilt1(raw_status, filter_window);
+
+%% 4. Plotten
+f = figure('Name', 'Tire Status Analysis', 'NumberTitle', 'off');
+% Fenster etwas höher machen, da wir jetzt 5 Plots haben
+% f.Position(4) = f.Position(4) * 1.2;
+
+tiledlayout(6,1, 'TileSpacing', 'compact');
+
+% --- Subplot 1: Slip Angle (Alpha) ---
+ax1 = nexttile;
+plot(t_axis, alpha, 'LineWidth', 1.5); hold on;
+yline(threshold_SA, 'r--', 'Limit', 'LabelHorizontalAlignment', 'left');
+yline(-threshold_SA, 'r--', 'Limit', 'LabelHorizontalAlignment', 'left');
+ylabel('Alpha [deg]');
+title(['Slip Angle (Threshold: ' num2str(threshold_SA) ' deg)']);
+grid on;
+
+% --- Subplot 2: Slip Ratio (Kappa) ---
+ax2 = nexttile;
+plot(t_axis, kappa, 'LineWidth', 1.5); hold on;
+yline(threshold_SL, 'm--', 'Limit', 'LabelHorizontalAlignment', 'left');
+yline(-threshold_SL, 'm--', 'Limit', 'LabelHorizontalAlignment', 'left');
+ylabel('Kappa [-]');
+title(['Slip Ratio (Threshold: ' num2str(threshold_SL) ')']);
+grid on;
+
+% --- Subplot 3: Velocity (V) ---
+ax3 = nexttile;
+plot(t_axis, v_sig, 'LineWidth', 1.5, 'Color', '#D95319'); % Matlab Orange
+ylabel('V [m/s]'); % Einheit anpassen falls km/h
+title('Velocity');
+grid on;
+
+% --- Subplot 4: Elapsed Time (ET) ---
+ax4 = nexttile;
+plot(t_axis, et_data, 'LineWidth', 1.5, 'Color', '#77AC30'); % Matlab Grün
+ylabel('ET [s]');
+title('Elapsed Time Check');
+grid on;
+
+% --- Subplot 5: Status ---
+ax5 = nexttile;
+hold on;
+
+% Rohdaten (graue Punkte)
+h_raw = plot(t_axis, raw_status, 'o','Color', [0.5 0.5 0.5],'MarkerSize', 3,'DisplayName', 'Roh');
+
+% Geglättete Daten
+h_smooth = plot(t_axis, smooth_status, '-','LineWidth', 2.5,'DisplayName', ['Filter: ' num2str(filter_window)]);
+
+legend([h_smooth, h_raw], 'Location', 'northwest', 'Orientation', 'horizontal');
+yticks([0 1 2 3]);
+yticklabels({'Inaktiv', 'Lateral', 'Longit.', 'Combined'});
+ylabel('Status');
+xlabel(x_label_str);
+title('Klassifizierung');
+grid on;
+ylim([-0.5 3.5]);
+
+% --- Subplot 6: Vertical Force (Fz) ---
+ax6 = nexttile;
+plot(t_axis,Fz_data, 'LineWidth', 1.5, 'Color', '#D95319'); % Matlab Orange
+ylabel('Fz [N]'); % Einheit anpassen falls km/h
+title('Vertical Force');
+grid on;
+
+% Achsen verknüpfen (Zoom auf einem Plot zoomt alle)
+linkaxes([ax1, ax2, ax3, ax4, ax5, ax6], 'x');
+end

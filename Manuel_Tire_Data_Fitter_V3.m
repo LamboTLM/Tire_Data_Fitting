@@ -1,0 +1,751 @@
+%% Manuel Tire Data Fitter V6
+clear, clc, close all;
+
+% Autor: Lambo || Datum: 17.04.26
+% Erstellen eines Skriptes zum Laden, unterteilung und Filtern von
+% Reifentestdaten um diese später zu einem MF 6.2 Modell fitten zu können
+%
+%  Strategie:
+%    https://uen.pressbooks.pub/range26i1/chapter/cantrell/
+
+%% Config
+addpath("Functions\")
+
+% Konfiguration des Testdaten Filters
+SA_THRESH_DEG   = 0.5;   % [deg] ab wann SA "aktiv"
+SL_THRESH       = 0.02;  % [-]   ab wann SL "aktiv"
+FILTER_WIN      = 301;   % Medianfilter-Fenster für Klassifikation
+
+%% Laden der Testdaten
+% tire_dir   = '0_Tire_test_data\0_Reifen_43075';
+% files       = dir(fullfile(tire_dir, '*.mat'));
+% 
+% % Check ob Ordner Leer ist
+% if isempty(files)
+%     fprintf('  WARNUNG: Keine .mat-Dateien.\n\n');
+% end
+% 
+% % Erstellen eines Leeren tireData Object zum befüllen
+% [td_loaded] = create_Tire_object;
+% 
+% % Laden alle der Reifentestdaten und Packen in ein td_object
+% for i = 1:numel(files)
+% 
+%     % Load Data File
+%     fpath = fullfile(files(i).folder, files(i).name);
+%     raw   = load(fpath);
+% 
+%     % Pack into td Object
+%     td_temp = create_Tire_object;
+%     td_temp = populate_tire_object(td_temp, raw);
+% 
+%     % Aufspalten des Testruns nach TTC Kennzeichnung
+%     td_temp = split(td_temp, "et");
+%     td_temp = setTestingMethod_Smoothed(td_temp,deg2rad(SA_THRESH_DEG), SL_THRESH, FILTER_WIN);
+% 
+%     % Packen in ein Tire data Object
+%     if i == 1
+%         td_loaded = td_temp;
+%     else
+%         td_loaded = [td_loaded; td_temp];
+%     end
+% end
+
+% Variabeln Löschen
+clearvars -except td_loaded
+load("td_loaded.mat") % Nur für schneller debug sonst hart Falsch
+controll_KYS(td_loaded)
+% plot(td_loaded)
+
+%% Pre-Processing der Daten
+% Filter der Reifen daten nach Plausibilität
+td_filterd = filterTireData(td_loaded, false);
+% td_filterd = mean(td_filterd, ["Fz","IP"]); 
+
+% Aufteilung der Segments in Bins
+td_processed = preprocessTireData(td_filterd, true, 1000);
+plot(td_processed)
+
+% Ernuet nur debug, weitergabe des ungebinnten td
+td_processed = td_filterd;
+
+% Variabeln Löschen
+clearvars -except td_processed
+% load("td_processed.mat") % Nur für schneller debug sonst hart Falsch
+
+%% Tire modell and Fitting
+tm      = tireModel.new("MF");
+tm.Name = 'Hoosier_R20_43075_RP25e';
+
+% Dimensionen, Nominal, Limits automatisch aus Daten setzen
+tm = initModelFromData(tm, td_processed);
+
+% Segmente nach TestMethod aufteilen
+lat_data  = td_processed([td_processed.TestMethod] == "Lateral");
+long_data = td_processed([td_processed.TestMethod] == "Longitudinal");
+comb_data = td_processed([td_processed.TestMethod] == "Combined");
+
+% Fy Pure fit wenn lateral-Daten vorhanden
+if ~isempty(lat_data)
+    fprintf('--- Fitting Fy Pure ---\n');
+    [tm, tbl_fy] = fit(tm, lat_data, "Fy Pure", PlotFit=true);
+    disp(tbl_fy);
+end
+
+% Fx Pure fit wenn Longitudinal-Daten vorhanden
+if ~isempty(long_data)
+    fprintf('--- Fitting Fx Pure ---\n');
+    [tm, tbl_fx] = fit(tm, long_data, "Fx Pure", PlotFit=true);
+    disp(tbl_fx);
+end
+
+% Combined fit wenn Combined-Daten vorhanden
+if ~isempty(comb_data)
+    fprintf('--- Fitting Combined ---\n');
+    [tm, tbl_comb] = fit(tm, comb_data, "Fy Combined", PlotFit=true);
+    [tm, tbl_comb] = fit(tm, comb_data, "Fx Combined", PlotFit=true);
+end
+
+%% Human Fuctions
+function [tdnew] = populate_tire_object(tdnew, fsData)
+%% Eingangsvariabeln
+% TestMethod = hier erstmal Unknown, wird später zugeteilt
+
+%% Ausgangsvariabeln
+% tdnew ist jetzt ein befülltes tiredata object
+
+%% Function Code
+
+% Preperation
+[row, ~] = size(fsData.MX);
+
+% --- Messdaten und Achsen (Umrechnung in SI-Einheiten) ---
+tdnew.et                = fsData.ET;                        % Zeit [s]
+tdnew.seget             = fsData.ET;                        % Segmentzeit [s]
+tdnew.segment           = ones(row, 1);                     % Segment-ID (Platzhalter: 1)
+tdnew.measnumb          = linspace(1, row, row);            % Messpunktnummer
+tdnew.Fx                = fsData.FX;                        % Längskraft [N]
+tdnew.Fy                = fsData.FY;                        % Seitenkraft [N]
+tdnew.Fz                = fsData.FZ;                        % Normalkraft [N]
+tdnew.Mx                = fsData.MX;                        % Überrollmoment (Mx) [Nm]
+tdnew.My                = zeros(row, 1);                    % Kippmoment (My) [Nm] (Zero-Placeholder)
+tdnew.Mz                = fsData.MZ;                        % Ausrichtendes Moment (Mz) [Nm]
+tdnew.IP                = fsData.P * 1000;                  % Inflationsdruck [Pa] (von kPa)
+tdnew.alpha             = (pi/180) * fsData.SA;             % Schräglaufwinkel [rad] (von deg)
+tdnew.gamma             = (pi/180) * fsData.IA;             % Sturzwinkel [rad] (von deg)
+tdnew.kappa             = fsData.SL;                        % Längsschlupf [-]
+tdnew.phit              = zeros(row, 1);                    % Wegrollwinkel [rad] (Zero-Placeholder)
+tdnew.V                 = (1000 / 3600) * (fsData.V);       % Geschwindigkeit [m/s] (von km/h)
+tdnew.omega             = (1 / 60) * (fsData.N);            % Radwinkelgeschw. [U/s] (von U/min)
+
+% Parsen der Tire ID zum ausfüllen der Werte
+[fsData] = Parse_tire_ID(fsData);
+
+% Zugeteilte Meta daten aus dem Parser
+tdnew.TestMethod        = 'Unkown';                         % Testtyp (Wichtig für Fx/Fy-Trennung) (Wird noch extern gemacht)
+tdnew.SectionWidth      = fsData.SectionWidth;              % Schnittbreite [mm]
+tdnew.AspectRatio       = fsData.AspectRatio;               % Querschnittsverhältnis [%]
+tdnew.RimDiameter       = fsData.RimDiameter;               % Felgendurchmesser [inch]
+tdnew.OverallDiameter   = fsData.OverallDiameter;           % Gesamtdurchmesser [m]
+tdnew.RimWidth          = fsData.RimWidth;                  % Felgenbreite [inch]
+tdnew.TestDate          = string(datetime('now'));          % Testdatum/Zeit
+
+% Fix Data for Round 9 TTC Data (Not Fit Relevant but Information)
+tdnew.TestFacility      = "FS Tire Data";                   % Testeinrichtung (Metadaten)
+tdnew.TestMachine       = "MTS Flat-Trac LTRe";             % Testmaschine (Metadaten)
+tdnew.Surface           = "120 3Mite";                      % Oberflächentyp
+tdnew.SurfaceCondition  = "Dry";                            % Oberflächenzustand
+
+% Optionale Sachen? Noch Testen oder Klar kennzeichnen das Geraten
+tdnew.SpeedSymbol       = "V";                              % Geschwindigkeitssymbol
+tdnew.LoadIndex         = 90;                               % Lastindex
+tdnew.TireSize          = "152.4/67R10";                    % Reifengröße, (Technisch nicht relevant, platzhalter stehen gelassen)
+
+tdnew                   = tdnew.coordinateTransform("ISO"); % Konvertierung zu ISO-Standardachse
+end
+
+function [fsData] = Parse_tire_ID(fsData)
+% 1. Extraktion der Felgenbreite (Sucht nach einer Zahl vor "inch rim")
+rimWidthMatch = regexp(fsData.tireid, '(\d+\.?\d*)\s*inch rim', 'tokens');
+if ~isempty(rimWidthMatch)
+    fsData.RimWidth = str2double(rimWidthMatch{1}{1});
+end
+
+dimMatch = regexp(fsData.tireid, '(\d+\.?\d*)x(\d+\.?\d*)-(\d+\.?\d*)', 'tokens');
+
+if ~isempty(dimMatch)
+    % Werte aus den Tokens extrahieren
+    OD_inch = str2double(dimMatch{1}{1}); % Gesamtdurchmesser in inch
+    SW_inch = str2double(dimMatch{1}{2}); % Schnittbreite in inch
+    RD_inch = str2double(dimMatch{1}{3}); % Felgendurchmesser in inch
+
+    % Konvertierungen und Berechnungen
+    % 1 inch = 25.4 mm
+    fsData.SectionWidth    = SW_inch * 25.4;
+    fsData.RimDiameter     = RD_inch;
+    fsData.OverallDiameter = OD_inch * 0.0254; % Umrechnung in Meter
+
+    % Aspect Ratio berechnen: ((OD - RD) / 2) / SW * 100
+    % Da OD, RD und SW in den gleichen Einheiten vorliegen, kürzt sich inch raus
+    fsData.AspectRatio = round(((OD_inch - RD_inch) / 2) / SW_inch * 100);
+end
+end
+
+function controll_KYS(td_current)
+
+% 1. Alle Werte in ein Array zusammenfassen
+alleSysteme = [td_current.CoordinateSystem];
+
+% 2. Zählen, wie oft "ISO" vorkommt
+anzahlISO = sum(alleSysteme == "ISO");
+
+% 3. Zählen, wie oft "SAE" vorkommt
+anzahlSAE = sum(alleSysteme == "SAE");
+fprintf('Anzahl ISO: %d\n', anzahlISO);
+fprintf('Anzahl SAE: %d\n', anzahlSAE);
+
+end
+%% AI Functions
+
+function processedOut = preprocessTireData(td_segs, Console_Debug, targetPointsPerBin)
+%PREPROCESSTIREDATA  Binning & Collapsing von TTC Reifensegmenten
+%
+%  Jeder stabile Bin ergibt ein eigenes tireData-Objekt (skalare Mittelwerte).
+%  Ausgabe: nBins x 1 tireData-Array
+%
+%  Aufruf:
+%    processedData = preprocessTireData(td_final, false);
+%    processedData = preprocessTireData(td_final, true, 80);
+
+    if nargin < 2; Console_Debug      = false; end
+    if nargin < 3; targetPointsPerBin = 80;    end
+
+    PSI2PA = 6894.757;
+
+    %% --- Binning-Toleranzen -----------------------------------------
+    tol.Lateral.FZ    = 50;
+    tol.Lateral.SA    = deg2rad(2);
+    tol.Lateral.IA    = deg2rad(0.1);
+    tol.Lateral.P     = 0.2 * PSI2PA;
+    tol.Lateral.useSL = false;
+
+    % % Archiv Paper Werte
+    % tol.Lateral.FZ    = 160;
+    % tol.Lateral.SA    = deg2rad(10.0);
+    % tol.Lateral.IA    = deg2rad(0.5);
+    % tol.Lateral.P     = 1 * PSI2PA;
+    % tol.Lateral.useSL = false;
+
+    tol.Longitudinal.FZ    = 175;
+    tol.Longitudinal.SA    = deg2rad(0.5);
+    tol.Longitudinal.IA    = deg2rad(0.5);
+    tol.Longitudinal.P     = 1 * PSI2PA;
+    tol.Longitudinal.SL    = 0.15;
+    tol.Longitudinal.useSL = true;
+
+    tol.Combined.FZ    = 175;
+    tol.Combined.SA    = deg2rad(0.5);
+    tol.Combined.IA    = deg2rad(0.5);
+    tol.Combined.P     = 1 * PSI2PA;
+    tol.Combined.SL    = 0.15;
+    tol.Combined.useSL = true;
+
+    numFields  = {'Fz','Fy','Fx','Mz','Mx','My','alpha','gamma','IP','kappa','V','omega','et','seget'};
+
+    metaFields = {'TestMethod','SectionWidth','AspectRatio','RimDiameter', ...
+                  'OverallDiameter','RimWidth','TestDate','TestFacility',  ...
+                  'TestMachine','Surface','SurfaceCondition','SpeedSymbol', ...
+                  'LoadIndex','TireSize'};
+
+    allMethods   = {'Lateral','Longitudinal','Combined'};
+    processedOut = [];
+
+    %% --- Hauptschleife: eine Iteration pro TestMethod ---------------
+    for m = 1:numel(allMethods)
+        methodKey = allMethods{m};
+        t         = tol.(methodKey);
+
+        %% Schritt 1 – Segmente dieser TestMethod sammeln
+        mask         = arrayfun(@(s) strcmp(strtrim(s.TestMethod), methodKey), td_segs);
+        segsOfMethod = td_segs(mask);
+
+        if isempty(segsOfMethod)
+            if Console_Debug
+                fprintf('[%s] Keine Segmente → übersprungen\n', methodKey);
+            end
+            continue
+        end
+
+        if Console_Debug
+            fprintf('[%s] %d Segment(e) gefunden\n', methodKey, numel(segsOfMethod));
+        end
+
+        %% Schritt 2 – Kanäle aller Segmente verketten
+        catData = struct();
+        for fi = 1:numel(numFields)
+            catData.(numFields{fi}) = [];
+        end
+
+        refSeg = segsOfMethod(1);   % Metadaten-Quelle
+
+        for s = 1:numel(segsOfMethod)
+            seg = segsOfMethod(s);
+            for fi = 1:numel(numFields)
+                fn = numFields{fi};
+                if ~isempty(seg.(fn))
+                    catData.(fn) = [catData.(fn); seg.(fn)(:)];
+                end
+            end
+        end
+
+        N = numel(catData.Fz);
+        if N < 2; continue; end
+
+        if Console_Debug
+            fprintf('  → %d Punkte nach Verkettung\n', N);
+        end
+
+        %% Schritt 3 – BINNING: Sprünge in Steuergrößen = Bin-Grenze
+        transition = ...
+            abs(diff(catData.Fz))    > t.FZ | ...
+            abs(diff(catData.alpha)) > t.SA | ...
+            abs(diff(catData.gamma)) > t.IA | ...
+            abs(diff(catData.IP))    > t.P;
+
+        if t.useSL
+            transition = transition | (abs(diff(catData.kappa)) > t.SL);
+        end
+
+        binID      = ones(N, 1);
+        currentBin = 1;
+        for i = 1:N-1
+            if transition(i)
+                currentBin = currentBin + 1;
+            end
+            binID(i+1) = currentBin;
+        end
+
+        uniqueBins = unique(binID);
+        nBins      = numel(uniqueBins);
+
+        if Console_Debug
+            fprintf('  → %d Bins erkannt\n', nBins);
+        end
+
+        %% Schritt 4+5 – Ein tireData-Objekt pro Bin
+        minBinSize = max(5, round(targetPointsPerBin / 4));
+        nDiscarded = 0;
+        fieldsWithoutFz = numFields(~strcmp(numFields, 'Fz'));
+
+        for b = 1:nBins
+            idx    = find(binID == uniqueBins(b));
+            nInBin = numel(idx);
+
+            if nInBin < minBinSize
+                nDiscarded = nDiscarded + 1;
+                if Console_Debug
+                    fprintf('    Bin %d: %d Punkte < Min %d → verworfen\n', ...
+                            b, nInBin, minBinSize);
+                end
+                continue
+            end
+
+            % Frisches Objekt pro Bin
+            segOut = create_Tire_object();
+            segOut = segOut.coordinateTransform("ISO");
+
+            % Metadaten aus Referenz-Segment übernehmen
+            for mi = 1:numel(metaFields)
+                fn = metaFields{mi};
+                try segOut.(fn) = refSeg.(fn); 
+                catch
+                end
+            end
+            segOut.TestMethod = methodKey;
+
+            % Numerische Felder als Skalare (Bin-Mittelwert) setzen
+            % Fz zuletzt wegen möglicher Setter-Längenvalidierung
+            for fi = 1:numel(fieldsWithoutFz)
+                fn = fieldsWithoutFz{fi};
+                if ~isempty(catData.(fn))
+                    segOut.(fn) = mean(catData.(fn)(idx));
+                end
+            end
+            segOut.Fz = mean(catData.Fz(idx));
+
+            processedOut = [processedOut; segOut]; %#ok<AGROW>
+        end
+
+        if Console_Debug
+            fprintf('  → %d Bins behalten, %d verworfen\n\n', ...
+                    nBins - nDiscarded, nDiscarded);
+        end
+    end
+
+    if Console_Debug
+        fprintf('=== Preprocessing abgeschlossen: %d tireData-Objekte ===\n', ...
+                numel(processedOut));
+    end
+end
+
+function td_filtered = filterTireData(td_in, Console_Debug)
+%FILTERTIREDATA  Qualitätsfilter für TTC Round 9 Reifentestdaten
+%
+%  Angewendete Filter:
+%    1. FZ-Plausibilität      – Normalkraft im physikalisch sinnvollen Bereich
+%    2. Geschwindigkeit        – Nur TTC-definierte Testgeschwindigkeiten behalten
+%    3. Aufwärm-Filter         – Temp-basiert (TSTC/TSTI/TSTO) oder Kraft-Proxy
+%    4. Chattering-Detektion   – Rollende Varianz auf Fy und Fx
+%    5. Kraft-Plausibilität    – |Fy|/|Fz| und |Fx|/|Fz| unter mu_max
+%    6. IQR-Ausreißer          – Auf bereits gefilterten Punkten
+
+%% ================================================================
+%  KONFIGURATION
+%% ================================================================
+
+% --- FZ (Vorzeichen abhängig von Koordinatensystem) --------------
+cfg.FZ_min          =  50;      % [N]  Betragsmäßige Mindest-Normalkraft
+cfg.FZ_max          = 2500;     % [N]  Betragsmäßige Max-Normalkraft
+
+% --- Geschwindigkeit ----------------------------------------------
+cfg.V_targets       = [6.71, 11.18, 20.12];  % [m/s]  25 / 15 / 45 mph
+cfg.V_tolerance     = 1.5;                    % [m/s]  ± Fenster um jeden Sollwert
+
+% --- Kraftbeiwert -------------------------------------------------
+cfg.mu_max          = 2.5;      % [-]  Max. physikalisch sinnvoller Wert
+
+% --- Chattering ---------------------------------------------------
+cfg.chatter_window  = 25;       % [Punkte]
+cfg.chatter_sigma   = 5.0;      % [-]  Vielfaches der globalen Std.
+
+% --- IQR Ausreißer ------------------------------------------------
+cfg.IQR_factor      = 3.0;      % [-]
+
+% --- Aufwärm-Filter -----------------------------------------------
+cfg.temp_stable_dT      = 2.0;  % [°C]   Rollfenster-Std. unter diesem Wert → stabil
+cfg.temp_window         = 50;   % [Punkte]
+cfg.force_stable_window = 100;  % [Punkte] Fallback ohne Temperaturkanal
+cfg.force_stable_sigma  = 3.0;  % [-]
+
+%% ================================================================
+numFields = {'Fz','Fy','Fx','Mz','Mx','My','alpha','gamma','IP','kappa','V','omega','et','seget'};
+
+metaFields = {'TestMethod','SectionWidth','AspectRatio','RimDiameter', ...
+    'OverallDiameter','RimWidth','TestDate','TestFacility',  ...
+    'TestMachine','Surface','SurfaceCondition','SpeedSymbol', ...
+    'LoadIndex','TireSize'};
+
+td_filtered = [];
+
+%% ================================================================
+%  Hauptschleife
+%% ================================================================
+for s = 1:numel(td_in)
+    seg = td_in(s);
+    N   = numel(seg.Fz);
+
+    if N < cfg.chatter_window * 2
+        if Console_Debug
+            fprintf('  [Seg %d] Zu kurz (%d Punkte) → übersprungen\n', s, N);
+        end
+        continue
+    end
+
+    keep = true(N, 1);
+
+    %% ----------------------------------------------------------
+    %  FILTER 1 – FZ Plausibilität
+    %% ----------------------------------------------------------
+    mask_FZ = abs(seg.Fz) >= cfg.FZ_min & abs(seg.Fz) <= cfg.FZ_max;
+    keep    = keep & mask_FZ;
+
+    if Console_Debug
+        fprintf('  [Seg %d] FZ-Filter:      %4d Punkte entfernt\n', s, sum(~mask_FZ));
+    end
+
+    %% ----------------------------------------------------------
+    %  FILTER 2 – Geschwindigkeit
+    %% ----------------------------------------------------------
+    mask_V = false(N, 1);
+    for vt = 1:numel(cfg.V_targets)
+        mask_V = mask_V | ...
+            (abs(seg.V - cfg.V_targets(vt)) <= cfg.V_tolerance);
+    end
+    keep = keep & mask_V;
+
+    if Console_Debug
+        fprintf('  [Seg %d] V-Filter:       %4d Punkte entfernt\n', s, sum(~mask_V & mask_FZ));
+    end
+
+    %% ----------------------------------------------------------
+    %  FILTER 3 – Aufwärm-Filter
+    %% ----------------------------------------------------------
+    warmup_mask = true(N, 1);
+
+    hasTSTC = isprop(seg,'TSTC') && ~isempty(seg.TSTC) && numel(seg.TSTC)==N;
+    hasTSTI = isprop(seg,'TSTI') && ~isempty(seg.TSTI) && numel(seg.TSTI)==N;
+    hasTSTO = isprop(seg,'TSTO') && ~isempty(seg.TSTO) && numel(seg.TSTO)==N;
+
+    if hasTSTC || hasTSTI || hasTSTO
+        tempMat = [];
+        if hasTSTC; tempMat = [tempMat, seg.TSTC(:)]; end
+        if hasTSTI; tempMat = [tempMat, seg.TSTI(:)]; end
+        if hasTSTO; tempMat = [tempMat, seg.TSTO(:)]; end
+        T_mean       = mean(tempMat, 2);
+        T_rollstd    = movstd(T_mean, cfg.temp_window);
+        stable       = T_rollstd < cfg.temp_stable_dT;
+        first_stable = find(stable, 1, 'first');
+
+        if isempty(first_stable)
+            if Console_Debug
+                fprintf('  [Seg %d] Temp-Filter:    keine stabile Phase\n', s);
+            end
+        else
+            warmup_mask(1:first_stable-1) = false;
+            if Console_Debug
+                fprintf('  [Seg %d] Temp-Filter:    Aufwärm bis Index %d\n', s, first_stable);
+            end
+        end
+
+    elseif ~isempty(seg.Fy) && numel(seg.Fy) == N
+        Fy_global_std = std(seg.Fy);
+        Fy_rollstd    = movstd(seg.Fy, cfg.force_stable_window);
+        stable        = Fy_rollstd < cfg.force_stable_sigma * Fy_global_std;
+        first_stable  = find(stable, 1, 'first');
+
+        if ~isempty(first_stable)
+            warmup_mask(1:first_stable-1) = false;
+            if Console_Debug
+                fprintf('  [Seg %d] Aufwärm-Proxy: Aufwärm bis Index %d\n', s, first_stable);
+            end
+        end
+    end
+
+    keep = keep & warmup_mask;
+
+    %% ----------------------------------------------------------
+    %  FILTER 4 – Chattering
+    %% ----------------------------------------------------------
+    chatter_mask = true(N, 1);
+
+    for forceName = {'Fy', 'Fx'}
+        fn = forceName{1};
+        if isempty(seg.(fn)) || numel(seg.(fn)) ~= N
+            continue
+        end
+
+        F_std        = std(seg.(fn)(keep));
+        F_rollstd    = movstd(seg.(fn), cfg.chatter_window);
+        chatter_mask = chatter_mask & ...
+            (F_rollstd < cfg.chatter_sigma * F_std);
+    end
+
+    if Console_Debug
+        fprintf('  [Seg %d] Chattering:     %4d Punkte entfernt\n', s, sum(~chatter_mask & keep));
+    end
+    keep = keep & chatter_mask;
+
+    %% ----------------------------------------------------------
+    %  FILTER 5 – Kraft-Plausibilität
+    %% ----------------------------------------------------------
+    plaus_mask = true(N, 1);
+    Fz_safe    = seg.Fz;
+    Fz_safe(abs(Fz_safe) < 1) = NaN;
+
+    if ~isempty(seg.Fy) && numel(seg.Fy) == N
+        plaus_mask = plaus_mask & ...
+            (abs(seg.Fy) ./ abs(Fz_safe) <= cfg.mu_max);
+    end
+    if ~isempty(seg.Fx) && numel(seg.Fx) == N
+        plaus_mask = plaus_mask & ...
+            (abs(seg.Fx) ./ abs(Fz_safe) <= cfg.mu_max);
+    end
+
+    if Console_Debug
+        fprintf('  [Seg %d] mu-Plausibil.:  %4d Punkte entfernt\n', s, sum(~plaus_mask & keep));
+    end
+    keep = keep & plaus_mask;
+
+    %% ----------------------------------------------------------
+    %  FILTER 6 – IQR Ausreißer
+    %% ----------------------------------------------------------
+    iqr_mask = true(N, 1);
+
+    for forceName = {'Fy', 'Fx'}
+        fn = forceName{1};
+        if isempty(seg.(fn)) || numel(seg.(fn)) ~= N; continue; end
+
+        F_good  = seg.(fn)(keep);
+        Q1      = prctile(F_good, 25);
+        Q3      = prctile(F_good, 75);
+        IQR_val = Q3 - Q1;
+
+        iqr_mask = iqr_mask & ...
+            (seg.(fn) >= Q1 - cfg.IQR_factor * IQR_val) & ...
+            (seg.(fn) <= Q3 + cfg.IQR_factor * IQR_val);
+    end
+
+    if Console_Debug
+        fprintf('  [Seg %d] IQR-Ausreißer:  %4d Punkte entfernt\n', s, sum(~iqr_mask & keep));
+    end
+    keep = keep & iqr_mask;
+
+    %% ----------------------------------------------------------
+    %  Zusammenfassung
+    %% ----------------------------------------------------------
+    n_kept = sum(keep);
+    if Console_Debug
+        fprintf('  [Seg %d | %s] %d → %d Punkte (%.1f%% behalten)\n\n', ...
+            s, seg.TestMethod, N, n_kept, 100*n_kept/N);
+    end
+
+    if n_kept < 10
+        if Console_Debug
+            fprintf('  [Seg %d] Zu wenige valide Punkte → übersprungen\n', s);
+        end
+        continue
+    end
+
+    %% ----------------------------------------------------------
+    %  Gefiltertes tireData-Objekt aufbauen
+    %% ----------------------------------------------------------
+    segOut = create_Tire_object();
+    segOut = segOut.coordinateTransform("ISO");
+
+    for mi = 1:numel(metaFields)
+        fn = metaFields{mi};
+        try segOut.(fn) = seg.(fn); 
+        catch
+        end
+    end
+
+    fieldsWithoutFz = numFields(~strcmp(numFields,'Fz'));
+    for fi = 1:numel(fieldsWithoutFz)
+        fn = fieldsWithoutFz{fi};
+        if ~isempty(seg.(fn)) && numel(seg.(fn)) == N
+            segOut.(fn) = seg.(fn)(keep);
+        end
+    end
+    segOut.Fz = seg.Fz(keep);
+
+    td_filtered = [td_filtered; segOut]; %#ok<AGROW>
+end
+end
+
+function tm = initModelFromData(tm, processedData)
+%INITMODELFROMDATA  Setzt MF 6.2 Dimensionen, Nominal & Limits
+%                   automatisch aus den gefilterten Testdaten.
+%
+%  Aufruf:
+%    tm = initModelFromData(tm, processedData)
+%
+%  Reihenfolge (kritisch für den Fitter):
+%    1. Dimensionen  – physikalische Reifengeometrie
+%    2. Nominalbedingungen – FNOMIN und NOMPRES
+%    3. Operating Limits – aus tatsächlichem Datenbereich
+
+%% --- 0. Alle Segmente in gemeinsame Vektoren sammeln ----------------
+allFz    = [];  allAlpha = [];  allKappa = [];
+allGamma = [];  allIP    = [];  allV     = [];
+
+for s = 1:numel(processedData)
+    seg = processedData(s);
+    allFz    = [allFz;    seg.Fz(:)];
+    allAlpha = [allAlpha; seg.alpha(:)];
+    allKappa = [allKappa; seg.kappa(:)];
+    allGamma = [allGamma; seg.gamma(:)];
+    allIP    = [allIP;    seg.IP(:)];
+    allV     = [allV;     seg.V(:)];
+end
+
+% Betragsbasiert für Fz (Vorzeichen-agnostisch)
+absFz = abs(allFz);
+
+%% --- 1. DIMENSIONEN (aus Reifengeometrie des ersten Segments) -------
+meta = processedData(1);
+
+tm.UNLOADED_RADIUS = meta.OverallDiameter / 2;          % [m]
+tm.WIDTH           = meta.SectionWidth / 1000;           % [m]
+tm.RIM_RADIUS      = (meta.RimDiameter * 0.0254) / 2;   % [m]
+tm.ASPECT_RATIO    = meta.AspectRatio / 100;             % [-]
+
+fprintf('[Init] Dimensionen:\n');
+fprintf('  UNLOADED_RADIUS = %.4f m\n', tm.UNLOADED_RADIUS);
+fprintf('  WIDTH           = %.4f m\n', tm.WIDTH);
+fprintf('  RIM_RADIUS      = %.4f m\n', tm.RIM_RADIUS);
+fprintf('  ASPECT_RATIO    = %.3f\n',   tm.ASPECT_RATIO);
+
+%% --- 2. NOMINALBEDINGUNGEN -----------------------------------------
+% FNOMIN: Am sinnvollsten der häufigste Fz-Wert → Modus via Histogramm
+%         Als robuste Näherung: Median der Lateral-Daten
+lat_mask = arrayfun(@(s) strcmp(s.TestMethod,'Lateral'), processedData);
+if any(lat_mask)
+    lat_segs = processedData(lat_mask);
+    fz_lat   = abs(vertcat(lat_segs.Fz));
+    tm.FNOMIN = round(median(fz_lat) / 50) * 50;   % auf 50 N runden
+else
+    tm.FNOMIN = round(median(absFz) / 50) * 50;
+end
+
+% NOMPRES: Mediandruck aller Segmente
+tm.NOMPRES = median(allIP);    % [Pa]
+
+fprintf('\n[Init] Nominalbedingungen:\n');
+fprintf('  FNOMIN  = %.0f N\n',  tm.FNOMIN);
+fprintf('  NOMPRES = %.0f Pa (= %.1f kPa)\n', tm.NOMPRES, tm.NOMPRES/1000);
+
+%% --- 3. OPERATING LIMITS -------------------------------------------
+% Strategie: p5/p95 Perzentile + 5% Puffer → robust gegen Ausreißer
+%            und physikalisch sinnvoll eingegrenzt.
+
+MARGIN = 0.05;   % 5% Puffer über gemessenen Bereich hinaus
+
+% Hilfsfunktion: Bereich mit Puffer
+pct = @(x, lo, hi) [prctile(x,lo), prctile(x,hi)];
+pad = @(lo, hi) [lo - abs(hi-lo)*MARGIN, hi + abs(hi-lo)*MARGIN];
+
+% Fz -----------------------------------------------------------------
+[fz_lo, fz_hi]  = deal(prctile(absFz, 2), prctile(absFz, 98));
+tm.FZMIN = max(50, fz_lo * (1 - MARGIN));    % nie unter 50 N
+tm.FZMAX = fz_hi * (1 + MARGIN);
+
+% Schräglaufwinkel α [rad] -------------------------------------------
+[a_lo, a_hi]    = deal(prctile(allAlpha,1), prctile(allAlpha,99));
+rng_a           = pad(a_lo, a_hi);
+tm.ALPMIN = rng_a(1);
+tm.ALPMAX = rng_a(2);
+
+% Längsschlupf κ [-] -------------------------------------------------
+[k_lo, k_hi]    = deal(prctile(allKappa,1), prctile(allKappa,99));
+rng_k           = pad(k_lo, k_hi);
+tm.KPUMIN = rng_k(1);
+tm.KPUMAX = rng_k(2);
+
+% Sturzwinkel γ [rad] ------------------------------------------------
+[g_lo, g_hi]    = deal(prctile(allGamma,1), prctile(allGamma,99));
+rng_g           = pad(g_lo, g_hi);
+tm.CAMMIN = rng_g(1);
+tm.CAMMAX = rng_g(2);
+
+% Inflationsdruck [Pa] -----------------------------------------------
+[p_lo, p_hi]    = deal(prctile(allIP,1), prctile(allIP,99));
+rng_p           = pad(p_lo, p_hi);
+tm.PRESMIN = max(0, rng_p(1));
+tm.PRESMAX = rng_p(2);
+
+% Geschwindigkeit [m/s] ----------------------------------------------
+tm.VXLOW = 0.5;                              % Grenze für Quasistatik [m/s]
+% tm.VXMAX = prctile(allV,99) + 1.0;          % Puffer über max. Testv.
+
+fprintf('\n[Init] Operating Limits:\n');
+fprintf('  FZMIN / FZMAX   = %.0f / %.0f N\n',   tm.FZMIN,  tm.FZMAX);
+fprintf('  ALPMIN / ALPMAX = %.3f / %.3f rad (%.1f / %.1f deg)\n', ...
+    tm.ALPMIN, tm.ALPMAX, rad2deg(tm.ALPMIN), rad2deg(tm.ALPMAX));
+fprintf('  KPUMIN / KPUMAX = %.3f / %.3f\n',      tm.KPUMIN, tm.KPUMAX);
+fprintf('  CAMMIN / CAMMAX = %.3f / %.3f rad (%.1f / %.1f deg)\n', ...
+    tm.CAMMIN, tm.CAMMAX, rad2deg(tm.CAMMIN), rad2deg(tm.CAMMAX));
+fprintf('  PRESMIN / PRESMAX = %.0f / %.0f Pa\n', tm.PRESMIN, tm.PRESMAX);
+% fprintf('  VXLOW / VXMAX   = %.2f / %.2f m/s\n', tm.VXLOW,  tm.VXMAX);
+
+fprintf('\n[Init] Modell bereit für Fitting.\n\n');
+end

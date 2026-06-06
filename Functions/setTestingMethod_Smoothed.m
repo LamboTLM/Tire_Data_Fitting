@@ -2,6 +2,8 @@ function tireObj_out = setTestingMethod_Smoothed(tireObj_in, threshold_SA, thres
 % SETTESTINGMETHOD_SMOOTHED Bestimmt die TestingMethod basierend auf dem dominierenden
 %                            glatten Klassifizierungs-Ergebnis der Zeitreihe.
 %
+% Autor: Lambo || Datum: 17.04.26
+%
 % EINGABE:
 %   tireObj_in: Ein tireData-Objekt oder Array von Objekten.
 %   threshold_SA: Schwellenwert für Schlupfwinkel (z.B. 0.5 deg).
