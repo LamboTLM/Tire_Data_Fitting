@@ -4,18 +4,8 @@
 <meta charset="UTF-8">
 <!--
   Startup-Screen | Tire_Filter_App | Dynamics e.V.
-  Statisches Logo + Reifen-Signature-Element mit Rauch-Effekt.
+  Statisches Logo + rotierender Reifen (Signature-Element) mit Rauch-Effekt.
   Kommunikation zur MATLAB App ueber uihtml: setup(component) + component.Data = "start".
-
-  Performance-Ueberarbeitung:
-  - Reifen-Rotation und Rauch-Puffs laufen NICHT mehr endlos im Leerlauf,
-    sondern nur noch waehrend der kurzen Start-Sequenz nach Klick (~2s).
-  - Weniger Rauch-Elemente (3 statt 5), kein "infinite" mehr -> Animation
-    spielt einmal ab und stoppt von selbst (kein Dauerbetrieb im Hintergrund).
-  - Eintritts-Animationen laufen einmalig beim Laden statt per Dauerschleife.
-  - Es bleibt nur ein einziges, sehr leichtes Dauer-Element uebrig: ein
-    reiner Opacity/Transform-Puls am Start-Button (guenstig fuer GPU/CPU,
-    kein Blur, kein Layout-Trigger).
 -->
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -29,87 +19,49 @@
 html,body{width:100%;height:100%}
 body{display:flex;flex-direction:column;background:linear-gradient(160deg,var(--bg-a) 0%,var(--bg-b) 50%,var(--bg-a) 100%);overflow:hidden;font-family:'Segoe UI',Tahoma,sans-serif}
 
-/* Kopfbereich: statisches Logo + Titel. Eintritt laeuft einmalig beim Laden
-   (animation, kein "infinite"), danach ist hier nichts mehr in Bewegung. */
-#header{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;padding-top:44px;transition:transform 1.4s cubic-bezier(.22,1,.36,1),opacity 1.4s cubic-bezier(.22,1,.36,1);animation:fadeInUp .8s cubic-bezier(.22,1,.36,1) both}
+/* Kopfbereich: statisches Logo + Titel */
+#header{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;padding-top:44px;transition:transform 1.4s cubic-bezier(.22,1,.36,1),opacity 1.4s cubic-bezier(.22,1,.36,1)}
 #logo{width:150px;height:150px;object-fit:contain;filter:drop-shadow(0 10px 26px rgba(0,0,0,.55))}
 #title-text{color:var(--ink);font-size:36px;font-weight:700;letter-spacing:5px;margin-top:18px;text-shadow:0 4px 15px rgba(0,0,0,.4);font-family:'Arial Black',sans-serif;transition:opacity 1s cubic-bezier(.22,1,.36,1),transform 1s cubic-bezier(.22,1,.36,1)}
 #subtitle{color:var(--ink-muted);font-size:12px;letter-spacing:4px;margin-top:8px;text-transform:uppercase;transition:opacity 1s cubic-bezier(.22,1,.36,1),transform 1s cubic-bezier(.22,1,.36,1)}
 
-/* Mittelbereich: Reifen als Signature-Element. Im Leerlauf steht er still --
-   das spart Dauerlast, weil vorher rund um die Uhr rotiert und gequalmt wurde,
-   auch waehrend MATLAB im Hintergrund noch laedt. */
-#stage{flex:1 1 auto;display:flex;align-items:center;justify-content:center;position:relative;transition:opacity .8s ease,transform .8s ease;animation:fadeInUp .8s cubic-bezier(.22,1,.36,1) .15s both}
+/* Mittelbereich: rotierender Reifen als Signature-Element */
+#stage{flex:1 1 auto;display:flex;align-items:center;justify-content:center;position:relative;transition:opacity .8s ease,transform .8s ease}
 #tire-stage{position:relative;width:240px;height:240px;display:flex;align-items:center;justify-content:center}
 .ground-shadow{position:absolute;bottom:22px;width:120px;height:18px;border-radius:50%;background:radial-gradient(ellipse at center,rgba(0,0,0,.55) 0%,rgba(0,0,0,0) 72%);filter:blur(2px)}
-
-/* Rauch/Dreck-Effekt: nur noch wenige, kleine Elemente, und sie spielen --
-   wie der Reifen -- kein "infinite" mehr ab. Sie starten ausschliesslich
-   waehrend der kurzen Start-Sequenz (Klasse .revving/.fly-away) und
-   beenden sich danach selbst.
-   Der Reifen dreht sich im Uhrzeigersinn (spin -> rotate(360deg)), d.h. die
-   Aufstandsflaeche unten bewegt sich nach LINKS -- alle Partikel fliegen
-   deshalb konsequent nur nach links (in Drehrichtung), nicht in beide
-   Richtungen. Weiche, verwaschene Rauchfahnen (.smoke-puff) + winzige,
-   etwas schaerfere Dreck-/Splitkoerner (.grit) ergeben zusammen eine
-   dezente Mischung aus Rauch, Dreck und Split statt eines grossen,
-   scharfkantigen Rauchkegels. */
-.smoke-puff{position:absolute;bottom:26px;opacity:0;border-radius:50%;filter:blur(3px);background:radial-gradient(ellipse at 62% 50%,rgba(214,210,202,.5) 0%,rgba(198,193,184,.22) 55%,rgba(198,193,184,0) 82%)}
-.p1{left:47%;width:30px;height:15px;--dx:-85px;--dy:-5px;--rot:-6deg;animation-delay:0s}
-.p2{left:44%;width:24px;height:12px;--dx:-65px;--dy:-2px;--rot:-4deg;animation-delay:.12s}
-.p3{left:41%;width:20px;height:10px;--dx:-48px;--dy:2px;--rot:-3deg;animation-delay:.24s}
+.smoke-puff{position:absolute;bottom:36px;border-radius:50%;background:radial-gradient(circle,rgba(200,200,206,.4) 0%,rgba(200,200,206,0) 70%);filter:blur(4px);opacity:0;animation:puffRise 3.6s ease-out infinite}
+.p1{left:44%;width:34px;height:34px;--dx:-16px;animation-delay:0s}
+.p2{left:56%;width:26px;height:26px;--dx:14px;animation-delay:.9s}
+.p3{left:40%;width:20px;height:20px;--dx:-22px;animation-delay:1.8s}
+.p4{left:52%;width:30px;height:30px;--dx:10px;animation-delay:2.4s}
+.p5{left:60%;width:18px;height:18px;--dx:20px;animation-delay:3.1s}
 @keyframes puffRise{
-0%{opacity:0;transform:translate(0,0) scale(.5) rotate(0deg)}
-22%{opacity:.5}
-65%{opacity:.28}
-100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(1.5) rotate(var(--rot))}
+0%{opacity:0;transform:translate(0,0) scale(.4)}
+18%{opacity:.55}
+100%{opacity:0;transform:translate(var(--dx),-90px) scale(1.6)}
 }
-.revving .smoke-puff,.fly-away .smoke-puff{animation:puffRise 1s ease-out forwards}
-
-.grit{position:absolute;bottom:27px;opacity:0;border-radius:40%;background:#8d8478}
-.g1{left:46%;width:3px;height:3px;--dx:-72px;--dy:7px;animation-delay:.01s}
-.g2{left:44%;width:2px;height:2px;--dx:-98px;--dy:-5px;animation-delay:.06s}
-.g3{left:48%;width:2.5px;height:2.5px;--dx:-52px;--dy:11px;animation-delay:.13s}
-.g4{left:42%;width:2px;height:2px;--dx:-112px;--dy:-9px;animation-delay:.04s}
-.g5{left:45%;width:2px;height:2px;--dx:-38px;--dy:13px;animation-delay:.19s}
-@keyframes gritFly{
-0%{opacity:0;transform:translate(0,0) scale(1)}
-12%{opacity:.75}
-70%{opacity:.5}
-100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(.5)}
-}
-.revving .grit,.fly-away .grit{animation:gritFly .5s cubic-bezier(.15,.7,.3,1) forwards}
-
-.wheel{transform-origin:50% 50%}
+.wheel{transform-origin:50% 50%;animation:spin 3.5s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-/* Der Reifen dreht sich nur waehrend der Start-Sequenz -- vorher und nachher
-   ist die Animation komplett aus (kein Timer, kein Repaint im Hintergrund). */
-.revving .wheel,.fly-away .wheel{animation:spin .5s linear infinite}
 
-/* Fussbereich: Start-Button. Der einzige Dauer-Effekt der App ist der
-   Button-Puls -- nur Opacity/Transform auf einem einzelnen Pseudo-Element,
-   ohne Blur und ohne Layout-Neuberechnung, also minimal fuer CPU/GPU. */
-#footer{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:14px;padding-bottom:52px;transition:opacity .8s ease,transform .8s ease;animation:fadeInUp .8s cubic-bezier(.22,1,.36,1) .3s both}
-#start-btn{position:relative;padding:16px 56px;font-size:15px;font-weight:700;letter-spacing:3px;color:var(--ink);background:rgba(200,35,55,.95);border:2px solid rgba(255,255,255,.25);border-radius:40px;cursor:pointer;transition:all .35s cubic-bezier(.22,1,.36,1);text-transform:uppercase;box-shadow:0 8px 32px rgba(200,35,55,.35)}
-#start-btn::before{content:"";position:absolute;inset:-2px;border-radius:44px;background:rgba(230,50,70,.55);z-index:-1;animation:btnPulse 2.6s ease-in-out infinite}
+/* Fussbereich: Start-Button */
+#footer{flex:0 0 auto;display:flex;justify-content:center;padding-bottom:52px;transition:opacity .8s ease,transform .8s ease}
+#start-btn{padding:16px 56px;font-size:15px;font-weight:700;letter-spacing:3px;color:var(--ink);background:rgba(200,35,55,.95);border:2px solid rgba(255,255,255,.25);border-radius:40px;cursor:pointer;backdrop-filter:blur(12px);transition:all .35s cubic-bezier(.22,1,.36,1);text-transform:uppercase;box-shadow:0 8px 32px rgba(200,35,55,.35)}
 #start-btn:hover{background:rgba(230,50,70,1);transform:translateY(-3px) scale(1.05);box-shadow:0 15px 45px rgba(200,35,55,.55);border-color:rgba(255,255,255,.5)}
-#hint-text{color:var(--ink-muted);font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:.7}
-@keyframes btnPulse{0%,100%{opacity:0;transform:scale(1)}50%{opacity:1;transform:scale(1.06)}}
-@keyframes fadeInUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
 
 /* Uebergang beim Start-Klick */
+.revving .wheel{animation-duration:.5s}
 .fly-away #header{transform:translate(190px,-150px) scale(.4);opacity:.85}
 .fly-away #title-text{opacity:0;transform:translateY(-30px) scale(.9)}
 .fly-away #subtitle{opacity:0;transform:translateY(-24px)}
 .fly-away #stage{opacity:0;transform:scale(.85)}
 .fly-away #start-btn{opacity:0;transform:scale(.7)}
-.fly-away #hint-text{opacity:0}
+.fly-away .wheel,.fly-away .smoke-puff{animation-play-state:paused}
 .fade-out-body{animation:bodyFadeOut .9s ease forwards;animation-delay:.8s}
 @keyframes bodyFadeOut{from{opacity:1}to{opacity:0;visibility:hidden}}
 
 @media (prefers-reduced-motion:reduce){
-#header,#stage,#footer{animation:none}
-.wheel,.smoke-puff,.grit,#start-btn::before{animation:none}
+.wheel{animation:none}
+.smoke-puff{animation:none}
 }
 </style>
 </head>
@@ -125,11 +77,8 @@ body{display:flex;flex-direction:column;background:linear-gradient(160deg,var(--
 <div class="smoke-puff p1"></div>
 <div class="smoke-puff p2"></div>
 <div class="smoke-puff p3"></div>
-<div class="grit g1"></div>
-<div class="grit g2"></div>
-<div class="grit g3"></div>
-<div class="grit g4"></div>
-<div class="grit g5"></div>
+<div class="smoke-puff p4"></div>
+<div class="smoke-puff p5"></div>
 <svg id="tire" viewBox="0 0 200 200" width="200" height="200">
 <g class="wheel">
 <circle cx="100" cy="100" r="76" style="fill:none;stroke:var(--tire-base);stroke-width:24"/>
@@ -150,7 +99,6 @@ body{display:flex;flex-direction:column;background:linear-gradient(160deg,var(--
 </div>
 <div id="footer">
 <button id="start-btn" onclick="startApp()">START</button>
-<div id="hint-text">Bereit zum Start</div>
 </div>
 <script>
 var htmlComponent=null;

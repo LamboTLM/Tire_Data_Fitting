@@ -397,16 +397,6 @@
             </button>
         </div>
 
-        <!-- PRESET RESET -->
-        <div class="section">
-            <button class="add-btn" onclick="resetToRecommended()">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
-                </svg>
-                Reset to Recommended
-            </button>
-        </div>
-
     </div><!-- /content -->
 
     <!-- Footer -->
@@ -416,93 +406,25 @@
 </div>
 
 <script>
-    /* ================================================================
-       DATA CONTRACT (JS -> MATLAB via htmlComponent.Data):
-       {
-         hideUnused: bool,
-         filters: [{ parameter, condition, val1, val2 }],
-             - 'Lowerbound (>=)' / 'Upperbound (<=)' / 'Gleich (==)' /
-               'Ungleich (!=)'          : val1 = Wert, val2 unbenutzt
-             - 'Bereich [min,max]'      : val1 = min,  val2 = max
-             - 'Band um Nominal [±%]'   : val1 = Toleranz [%], val2 unbenutzt
-                                          (Nominal-Raster liegt im MATLAB-Backend)
-             - 'Band um Peak [±%]'      : val1 = Toleranz [%] unterhalb des
-                                          Kanal-Peaks ueber alle Sweeps
-             - 'Band um Wert [±%]'      : val1 = Referenzwert, val2 = Toleranz [%]
-         smoothings: [{ parameter, active, type, param1, param2 }]
-             - Butterworth    : param1 = Ordnung N,  param2 = fc [Hz]
-             - Bessel         : param1 = Ordnung N,  param2 = fc [Hz]
-             - Savitzky-Golay : param1 = Ordnung,    param2 = Fenster
-             - Moving Average : param1 = Fenster
-             - Median         : param1 = Fenster
-             - Hampel         : param1 = Fenster,    param2 = n-Sigma
-       ================================================================ */
-
     /* ── Constants ───────────────────────────────────────── */
     const CHANNELS = ['alpha','kappa','Fx','Fy','Fz','Mx','Mz','IP','gamma','V','omega','TtreadI','TtreadC','TtreadO'];
-    const FILTER_CONDITIONS = [
-        'Lowerbound (>=)','Upperbound (<=)','Bereich [min,max]','Gleich (==)','Ungleich (!=)',
-        'Band um Nominal [±%]','Band um Peak [±%]','Band um Wert [±%]'
+    const FILTER_CONDITIONS = ['Lowerbound (>=)','Upperbound (<=)','Bereich [min,max]','Gleich (==)'];
+    const SMOOTHING_TYPES = ['Bessel','Savitzky-Golay','Moving Average','Median'];
+
+    /* ── State ───────────────────────────────────────────── */
+    let filters = [
+        { id: 'f1', channel: 'Fx',    condition: 'Lowerbound (>=)',  val1: '500', val2: '' },
+        { id: 'f2', channel: 'alpha', condition: 'Bereich [min,max]', val1: '-10', val2: '10' }
     ];
-    const SMOOTHING_TYPES = ['Butterworth','Bessel','Savitzky-Golay','Moving Average','Median','Hampel'];
-
-    /* Bedingungen mit zwei sichtbaren Eingabefeldern + Platzhaltertexte */
-    const CONDITION_INPUTS = {
-        'Lowerbound (>=)':      { two: false, ph1: 'value' },
-        'Upperbound (<=)':      { two: false, ph1: 'value' },
-        'Bereich [min,max]':    { two: true,  ph1: 'min',  ph2: 'max' },
-        'Gleich (==)':          { two: false, ph1: 'value' },
-        'Ungleich (!=)':        { two: false, ph1: 'value' },
-        'Band um Nominal [±%]': { two: false, ph1: 'Tol %' },
-        'Band um Peak [±%]':    { two: false, ph1: 'Tol %' },
-        'Band um Wert [±%]':    { two: true,  ph1: 'Ref',  ph2: 'Tol %' }
-    };
-
-    /* ── Empfohlene Presets ──────────────────────────────────
-       Physikalische Basis: Sweep-Anregung am Flat-Trac ~0.25-1 Hz.
-       fc >= 10x Sweep-Frequenz erhaelt Peaks (Fy_max, Mz-Spitze).
-       alpha/kappa NICHT tiefpassfiltern -> kein Phasenversatz der
-       Kennfeld-x-Achse. filtfilt im Backend = null Phase ueberall. */
-    const DEFAULT_SMOOTHINGS = [
-        { channel: 'Fz',      active: true,  type: 'Butterworth',    param1: '4',   param2: '5'  },
-        { channel: 'Fy',      active: true,  type: 'Butterworth',    param1: '4',   param2: '10' },
-        { channel: 'Fx',      active: true,  type: 'Butterworth',    param1: '4',   param2: '10' },
-        { channel: 'Mz',      active: true,  type: 'Butterworth',    param1: '4',   param2: '5'  },
-        { channel: 'Mx',      active: true,  type: 'Butterworth',    param1: '4',   param2: '5'  },
-        { channel: 'alpha',   active: true,  type: 'Median',         param1: '5',   param2: ''   },
-        { channel: 'kappa',   active: true,  type: 'Median',         param1: '5',   param2: ''   },
-        { channel: 'IP',      active: true,  type: 'Moving Average', param1: '51',  param2: ''   },
-        { channel: 'TtreadI', active: true,  type: 'Moving Average', param1: '101', param2: ''   },
-        { channel: 'TtreadC', active: true,  type: 'Moving Average', param1: '101', param2: ''   },
-        { channel: 'TtreadO', active: true,  type: 'Moving Average', param1: '101', param2: ''   },
-        { channel: 'V',       active: true,  type: 'Hampel',         param1: '7',   param2: '3'  },
-        { channel: 'omega',   active: true,  type: 'Hampel',         param1: '7',   param2: '3'  }
+    let smoothings = [
+        { id: 's1', channel: 'Fz',    active: true,  type: 'Bessel',        param1: '4',  param2: '15' },
+        { id: 's2', channel: 'kappa', active: false, type: 'Moving Average', param1: '10', param2: '' }
     ];
-
-    /* Qualitaets-Basisfilter:
-       - TtreadC Band um Peak: Warmup-Sweeps raus (Reifen ausserhalb
-         des thermischen Betriebsfensters)
-       - Fz Lowerbound: kein Reifenkontakt
-       - Fz Band um Nominal: Sweeps mit Fz-Regelabweichung > 10 % raus */
-    const DEFAULT_FILTERS = [
-        { channel: 'TtreadC', condition: 'Band um Peak [±%]',    val1: '25', val2: ''  },
-        { channel: 'Fz',      condition: 'Lowerbound (>=)',      val1: '50', val2: ''  },
-        { channel: 'Fz',      condition: 'Band um Nominal [±%]', val1: '10', val2: ''  }
-    ];
-
-    /* ── State (startet mit Presets) ─────────────────────── */
-    let filters = [];
-    let smoothings = [];
     let hideUnused = false;
     let htmlComponent = null;
 
     /* ── ID helper ───────────────────────────────────────── */
     function uid() { return Math.random().toString(36).substr(2, 9); }
-
-    function loadDefaults() {
-        filters = DEFAULT_FILTERS.map(f => ({ id: uid(), ...f }));
-        smoothings = DEFAULT_SMOOTHINGS.map(s => ({ id: uid(), ...s }));
-    }
 
     /* ── SVG snippets ────────────────────────────────────── */
     const trashSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>`;
@@ -515,7 +437,7 @@
 
     /* ── Render helpers ──────────────────────────────────── */
     function renderFilterCard(f) {
-        const cfg = CONDITION_INPUTS[f.condition] || { two: false, ph1: 'value' };
+        const isBereich = f.condition === 'Bereich [min,max]';
         const condOpts = FILTER_CONDITIONS.map(c =>
             `<option value="${c}"${c === f.condition ? ' selected' : ''}>${c}</option>`).join('');
 
@@ -531,30 +453,24 @@
                 onchange="updateFilter('${f.id}','condition',this.value)">${condOpts}</select>
             <div class="filter-inputs">
                 <input type="text" aria-label="Wert" value="${f.val1}"
-                    placeholder="${cfg.ph1}"
+                    placeholder="${isBereich ? 'min' : 'value'}"
                     oninput="updateFilter('${f.id}','val1',this.value)">
-                <input type="text" aria-label="Bis" value="${f.val2}" placeholder="${cfg.ph2 || ''}"
-                    class="${cfg.two ? '' : 'hidden'}"
+                <input type="text" aria-label="Bis" value="${f.val2}" placeholder="max"
+                    class="${isBereich ? '' : 'hidden'}"
                     oninput="updateFilter('${f.id}','val2',this.value)">
             </div>
         </div>`;
     }
 
-    /* Parameter-Labels je Smoothing-Typ (null = Feld ausblenden) */
-    function getSmoothingLabels(type) {
-        switch (type) {
-            case 'Butterworth':    return { lbl1: 'N',   lbl2: 'fc'  };
-            case 'Bessel':         return { lbl1: 'N',   lbl2: 'fc'  };
-            case 'Savitzky-Golay': return { lbl1: 'Ord', lbl2: 'Fen' };
-            case 'Moving Average': return { lbl1: 'Fen', lbl2: null  };
-            case 'Median':         return { lbl1: 'Fen', lbl2: null  };
-            case 'Hampel':         return { lbl1: 'Fen', lbl2: 'nσ'  };
-            default:               return { lbl1: 'P1',  lbl2: 'P2'  };
-        }
+    function getSmoothing2ndLabel(type) {
+        if (type === 'Bessel') return 'fc';
+        if (type === 'Savitzky-Golay') return 'Fen';
+        return null;
     }
 
     function renderSmoothingCard(s) {
-        const { lbl1, lbl2 } = getSmoothingLabels(s.type);
+        const lbl1 = s.type === 'Bessel' ? 'N' : s.type === 'Savitzky-Golay' ? 'Ord' : 'Fen';
+        const lbl2 = getSmoothing2ndLabel(s.type);
         const typeOpts = SMOOTHING_TYPES.map(t =>
             `<option value="${t}"${t === s.type ? ' selected' : ''}>${t}</option>`).join('');
 
@@ -617,12 +533,12 @@
         const f = filters.find(f => f.id === id);
         if (!f) return;
         f[field] = value;
-        if (field === 'condition') renderAll(); // Feldanzahl/Platzhalter aendern sich
+        if (field === 'condition') renderAll(); // need to show/hide second input
     }
 
     /* ── Smoothing actions ───────────────────────────────── */
     function addSmoothing() {
-        smoothings.push({ id: uid(), channel: CHANNELS[0], active: true, type: SMOOTHING_TYPES[0], param1: '4', param2: '10' });
+        smoothings.push({ id: uid(), channel: CHANNELS[0], active: true, type: SMOOTHING_TYPES[0], param1: '2', param2: '10' });
         renderAll();
     }
     function removeSmoothing(id) {
@@ -633,18 +549,12 @@
         const s = smoothings.find(s => s.id === id);
         if (!s) return;
         s[field] = value;
-        if (field === 'type') renderAll(); // Labels und Feldanzahl aendern sich
+        if (field === 'type') renderAll(); // labels and param count change
     }
     function toggleSmoothingActive(id) {
         const s = smoothings.find(s => s.id === id);
         if (!s) return;
         s.active = !s.active;
-        renderAll();
-    }
-
-    /* ── Preset reset ────────────────────────────────────── */
-    function resetToRecommended() {
-        loadDefaults();
         renderAll();
     }
 
@@ -680,14 +590,10 @@
     }
 
     /* ── Init ────────────────────────────────────────────── */
-    // MATLAB ruft beim Laden automatisch eine globale Funktion namens
-    // "setup" auf und übergibt die HTML-Component-Referenz.
-    function setup(component) {
-        htmlComponent = component;
-    }
-
     function init() {
-        loadDefaults();
+        if (typeof setupHTMLComponent === 'function') {
+            setupHTMLComponent(function(component) { htmlComponent = component; });
+        }
         renderAll();
     }
 

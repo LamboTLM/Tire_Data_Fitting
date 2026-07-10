@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<!--
+  Autor: Lambo || Datum: 09.07.26
+  Filter Validation View -- MATLAB App Designer uihtml-Integration
+
+  ZWECK
+  -----
+  Vollflaechen-Tab (~640x430 px) zur Validierung der Filter-/Smoothing-
+  Ergebnisse ueber alle Sweeps hinweg. Links ein Fy-vs-SA-Plot (Roh vs.
+  gefiltert, Hystereseschleife bleibt sichtbar -- KEIN Sortieren nach x!),
+  rechts eine scrollbare Kennzahlen-Tabelle. Klick auf eine Tabellenzeile
+  waehlt den Sweep im Plot aus -- rein clientseitig, kein MATLAB-Event
+  noetig fuer die Auswahl selbst.
+
+  MATLAB-INTEGRATION (uihtml)
+  ----------------------------
+  1. uihtml-Komponente einfuegen, HTMLSource auf diese Datei zeigen lassen.
+  2. MATLAB ruft beim Setzen von app.FilterValidationHTML.Data automatisch
+     das 'DataChanged'-Event aus -- hier bereits verdrahtet.
+  3. Datenvertrag (was MATLAB nach app.FilterValidationHTML.Data schreiben
+     muss):
+       {
+         sweeps: [
+           {
+             id: 0,                 // 0-basiert, JS-intern
+             label: "FZ=680N",
+             fzNominal: 680,
+             saDeg: [...],          // Schraeglaufwinkel [deg], NICHT sortiert
+                                     // (Reihenfolge = Messreihenfolge, Hysterese!)
+             fyRaw: [...],
+             fySmooth: [...],
+             dFyMaxPct: 1.8,        // max. relative Fy-Abweichung [%]
+             dMuMaxPct: 1.2,        // max. relative mu-Abweichung [%]
+             dCalphaPct: 0.6,       // relative C_alpha-Abweichung [%]
+             r2: 0.97
+           },
+           ...
+         ]
+       }
+     WICHTIG: sweeps als CELL-Array aufbauen (nicht struct-Array), sonst
+     wird ein einzelner Sweep in JS zum Objekt statt zum Array-Element.
+     MATLAB-seitig: app.FilterValidationHTML.Data = payload;
+
+  Die Sweep-Auswahl im Tabellen-Klick ist rein clientseitig -- es wird
+  KEIN sendEventToMATLAB dafuer ausgeloest.
+
+  Laeuft standalone im Browser (mit Mock-Daten) UND unveraendert in MATLAB.
+-->
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<title>Filter Validation</title>
+<script src="echarts.min.js"></script>
+<style>
+  :root {
+    --bg: #1a1a1a;
+    --panel: #242424;
+    --panel-hover: #2c2c2c;
+    --accent: #C72229;
+    --text: #e0e0e0;
+    --text-dim: #8f8f8f;
+    --border: #3a3a3a;
+    --grid: #3a3a3a;
+    --warn: #C7222933;
+    --caution: #d8c04d33;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg); color: var(--text);
+    font-family: system-ui, "Segoe UI", Arial, sans-serif;
+    font-size: 11.5px;
+  }
+  #app { display: flex; height: 100%; }
+
+  #plotCol { width: 60%; flex: 0 0 auto; padding: 6px; min-width: 0; }
+  #chart { width: 100%; height: 100%; }
+
+  #tableCol {
+    width: 40%; flex: 0 0 auto; min-width: 0;
+    border-left: 1px solid var(--border);
+    display: flex; flex-direction: column; min-height: 0;
+  }
+  #tableCol h2 {
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: .4px;
+    color: var(--text-dim); margin: 0; padding: 8px 10px 6px;
+    flex: 0 0 auto;
+  }
+  #tableWrap { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+  thead th {
+    position: sticky; top: 0; background: var(--panel);
+    text-align: right; padding: 5px 6px; color: var(--text-dim);
+    font-weight: 600; border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  thead th:first-child, tbody td:first-child { text-align: left; }
+  tbody td { padding: 5px 6px; text-align: right; border-bottom: 1px solid #262626; white-space: nowrap; }
+  tbody tr { cursor: pointer; transition: background .12s; }
+  tbody tr:hover { background: var(--panel-hover); }
+  tbody tr.selected { background: #3a2426; }
+  td.cell-warn { background: var(--warn); }
+  td.cell-caution { background: var(--caution); }
+
+  ::-webkit-scrollbar { width: 7px; }
+  ::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="plotCol"><div id="chart"></div></div>
+  <div id="tableCol">
+    <h2>Sweeps</h2>
+    <div id="tableWrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Label</th><th>FZ</th><th>&Delta;Fy [%]</th><th>&Delta;&mu; [%]</th><th>&Delta;C&alpha; [%]</th><th>R&sup2;</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+let chart = null;
+let htmlComponentRef = null;
+let __setupCalled = false;
+let state = {
+  data: null,
+  selectedId: null
+};
+
+function deltaClass(pct) {
+  const v = Math.abs(pct);
+  if (v > 2) return 'cell-warn';
+  if (v > 1) return 'cell-caution';
+  return '';
+}
+function fmtPct(v) { return v == null ? '--' : v.toFixed(2); }
+function fmtR2(v) { return v == null ? '--' : v.toFixed(3); }
+
+/* ============================================================
+   Tabelle
+   ============================================================ */
+function renderTable() {
+  const tbody = document.getElementById('tableBody');
+  tbody.innerHTML = '';
+  if (!state.data) return;
+
+  state.data.sweeps.forEach((s) => {
+    const tr = document.createElement('tr');
+    tr.className = state.selectedId === s.id ? 'selected' : '';
+    tr.innerHTML = `
+      <td>${s.label}</td>
+      <td>${Math.round(s.fzNominal)} N</td>
+      <td class="${deltaClass(s.dFyMaxPct)}">${fmtPct(s.dFyMaxPct)}</td>
+      <td class="${deltaClass(s.dMuMaxPct)}">${fmtPct(s.dMuMaxPct)}</td>
+      <td class="${deltaClass(s.dCalphaPct)}">${fmtPct(s.dCalphaPct)}</td>
+      <td>${fmtR2(s.r2)}</td>
+    `;
+    tr.addEventListener('click', () => {
+      state.selectedId = s.id;
+      renderTable();
+      renderChart();
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+/* ============================================================
+   Chart: Fy vs SA (Hystereseschleife, KEIN Sortieren nach x)
+   ============================================================ */
+function renderChart() {
+  const d = state.data;
+  if (!d || !chart) return;
+
+  const sweep = d.sweeps.find(s => s.id === state.selectedId) || d.sweeps[0];
+  if (!sweep) {
+    chart.setOption({ series: [] }, { notMerge: true });
+    return;
+  }
+
+  const rawPts = sweep.saDeg.map((x, i) => [x, sweep.fyRaw[i]]);
+  const smoothPts = sweep.saDeg.map((x, i) => [x, sweep.fySmooth[i]]);
+
+  chart.setOption({
+    backgroundColor: 'transparent',
+    title: {
+      text: `${sweep.label} -- Fy vs. SA`,
+      textStyle: { color: '#e0e0e0', fontSize: 12, fontWeight: 600 },
+      left: 8, top: 4
+    },
+    grid: { left: 60, right: 25, top: 40, bottom: 45 },
+    xAxis: {
+      type: 'value', name: 'SA [deg]', nameLocation: 'middle', nameGap: 26,
+      axisLabel: { color: '#B0B0B0' }, axisLine: { lineStyle: { color: '#555' } },
+      splitLine: { lineStyle: { color: 'var(--grid)' } }
+    },
+    yAxis: {
+      type: 'value', name: 'Fy [N]', nameTextStyle: { color: '#B0B0B0', fontSize: 11 },
+      axisLabel: { color: '#B0B0B0' }, axisLine: { lineStyle: { color: '#555' } },
+      splitLine: { lineStyle: { color: 'var(--grid)' } }
+    },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: '#2A2A2A', borderColor: '#444', textStyle: { color: '#e0e0e0' }
+    },
+    series: [
+      {
+        id: 'fyRaw', name: 'Roh', type: 'line', showSymbol: false,
+        data: rawPts, lineStyle: { color: '#8a8a8a', width: 1.2 }, z: 1
+      },
+      {
+        id: 'fySmooth', name: 'Gefiltert', type: 'line', showSymbol: false,
+        data: smoothPts, lineStyle: { color: '#C72229', width: 2.2 }, z: 2
+      }
+    ]
+  }, { notMerge: true });
+}
+
+/* ============================================================
+   Datenfluss MATLAB -> JS
+   ============================================================ */
+function updateData(newData) {
+  if (!newData) return;
+  state.data = newData;
+  if (state.selectedId == null || !newData.sweeps.some(s => s.id === state.selectedId)) {
+    state.selectedId = newData.sweeps.length ? newData.sweeps[0].id : null;
+  }
+  renderTable();
+  renderChart();
+}
+
+/* ============================================================
+   Entry point
+   ============================================================ */
+function setup(htmlComponent) {
+  if (__setupCalled) {
+    console.warn('setup() wurde bereits aufgerufen -- zweiter Aufruf wird ignoriert.');
+    return;
+  }
+  __setupCalled = true;
+  htmlComponentRef = htmlComponent;
+
+  if (typeof echarts === 'undefined') {
+    document.getElementById('chart').innerHTML =
+      '<div style="color:#C72229;padding:20px;font-size:13px;">' +
+      'Fehler: echarts.min.js konnte nicht geladen werden.<br>' +
+      'Pruefe, ob echarts.min.js im selben Ordner wie diese HTML-Datei liegt.' +
+      '</div>';
+    console.error('echarts ist undefined -- echarts.min.js wurde nicht geladen.');
+    return;
+  }
+
+  chart = echarts.init(document.getElementById('chart'), null, { renderer: 'canvas' });
+  window.addEventListener('resize', () => chart && chart.resize());
+
+  htmlComponent.addEventListener('DataChanged', function () {
+    updateData(htmlComponent.Data);
+  });
+
+  if (htmlComponent.Data) {
+    updateData(htmlComponent.Data);
+  }
+}
+
+/* ============================================================
+   Mock-Daten + Mock-htmlComponent NUR fuer Standalone-Test.
+   ============================================================ */
+function buildMockData() {
+  const fzLevels = [220, 680, 1350];
+  const nPts = 240; // hin und zurueck -> Hysterese
+  const sweeps = fzLevels.map((fz, id) => {
+    const half = nPts / 2;
+    const saDeg = [];
+    for (let i = 0; i < half; i++) saDeg.push(-12 + (24 * i) / (half - 1));
+    for (let i = 0; i < half; i++) saDeg.push(12 - (24 * i) / (half - 1));
+
+    function pacejkaFy(saRad) {
+      const B = 9, C = 1.4, D = 0.021 * fz, E = -1.2;
+      const x = saRad;
+      return D * Math.sin(C * Math.atan(B * x - E * (B * x - Math.atan(B * x))));
+    }
+
+    const fyRaw = [], fySmooth = [];
+    saDeg.forEach((deg, i) => {
+      const rad = deg * Math.PI / 180;
+      const hystOffset = (i < half ? 1 : -1) * fz * 0.01; // Hystereseband
+      const clean = pacejkaFy(rad) + hystOffset;
+      fyRaw.push(clean + (Math.random() - 0.5) * fz * 0.03);
+      fySmooth.push(clean);
+    });
+
+    const dFyMaxPct = [0.6, 1.4, 2.6][id];
+    const dMuMaxPct = [0.4, 1.1, 2.1][id];
+    const dCalphaPct = [0.3, 0.9, 1.5][id];
+
+    return {
+      id, label: `FZ=${fz}N`, fzNominal: fz,
+      saDeg, fyRaw, fySmooth,
+      dFyMaxPct, dMuMaxPct, dCalphaPct,
+      r2: 0.9 + Math.random() * 0.09
+    };
+  });
+
+  return { sweeps };
+}
+
+function createMockHtmlComponent() {
+  const listeners = {};
+  return {
+    Data: buildMockData(),
+    addEventListener(name, fn) { listeners[name] = listeners[name] || []; listeners[name].push(fn); },
+    sendEventToMATLAB(name, data) { console.log('[MOCK -> MATLAB]', name, data); }
+  };
+}
+
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    if (!__setupCalled) {
+      setup(createMockHtmlComponent());
+    }
+  }, 200);
+});
+</script>
+</body>
+</html>

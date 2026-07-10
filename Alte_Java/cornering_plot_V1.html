@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<!--
+  Autor: Lambo || Datum: 08.07.26
+  TTC Cornering-Plot Viewer -- Prototyp
+
+  ZWECK
+  -----
+  Ersetzt die MATLAB-App-Designer-Achsen (UIAxes/UIAxes_2/UIAxes_3) fuer
+  plot_cornering() durch eine interaktive ECharts-Darstellung. Das gesamte
+  Filtern/Smoothen bleibt in MATLAB -- dieses Script bekommt NUR fertige
+  Roh- und geglaettete Kurven als Daten und kuemmert sich ausschliesslich
+  um Darstellung, Highlighting, Animation.
+
+  MATLAB-INTEGRATION (uihtml)
+  ----------------------------
+  1. In App Designer: uihtml-Komponente statt UIAxes einfuegen,
+     HTMLSource auf diese Datei zeigen lassen.
+  2. MATLAB ruft beim Setzen von app.PlotHTML.Data automatisch das
+     'DataChanged'-Event aus -- das ist hier bereits verdrahtet.
+  3. Datenvertrag (das struct/JSON, das MATLAB nach app.PlotHTML.Data
+     schreiben muss) steht unten in DATA_CONTRACT_EXAMPLE / buildMockData().
+  4. Events aus JS zurueck nach MATLAB laufen ueber
+     htmlComponent.sendEventToMATLAB(name, data) -- siehe sendEvent().
+     In MATLAB: app.PlotHTML.HTMLEventReceivedFcn = @(src,evt) ...
+                switch evt.HTMLEventName ... evt.HTMLEventData ...
+
+  Dieses File laeuft standalone im Browser (mit Mock-Daten) UND unveraendert
+  in MATLAB -- setup() ist in beiden Faellen der gleiche Einstiegspunkt.
+-->
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<title>TTC Cornering Viewer -- Prototyp</title>
+<script src="echarts.min.js"></script>
+<style>
+  :root {
+    --bg: #1B1B1B;
+    --panel: #2A2A2A;
+    --panel-hover: #333333;
+    --accent: #C72229;
+    --text: #F2F2F2;
+    --text-dim: #9A9A9A;
+    --border: #3A3A3A;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", Arial, sans-serif;
+    font-size: 13px;
+  }
+  #app { display: flex; flex-direction: column; height: 100%; }
+
+  /* ---------- Header ---------- */
+  #header {
+    display: flex; align-items: center; gap: 14px;
+    padding: 10px 16px;
+    background: var(--panel);
+    border-left: 5px solid var(--accent);
+    flex: 0 0 auto;
+  }
+  #header h1 {
+    font-size: 15px; margin: 0; font-weight: 600; letter-spacing: .3px;
+  }
+  #header .sub { color: var(--text-dim); font-size: 11.5px; }
+
+  /* ---------- Toolbar ---------- */
+  #toolbar {
+    display: flex; align-items: center; gap: 18px;
+    padding: 8px 16px;
+    background: #232323;
+    border-bottom: 1px solid var(--border);
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+  }
+  .seg-control {
+    display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
+  }
+  .seg-control button {
+    background: var(--panel); color: var(--text-dim); border: none;
+    padding: 6px 12px; cursor: pointer; font-size: 12px;
+    border-right: 1px solid var(--border);
+    transition: background .15s, color .15s;
+  }
+  .seg-control button:last-child { border-right: none; }
+  .seg-control button.active { background: var(--accent); color: #fff; }
+  .seg-control button:hover:not(.active) { background: var(--panel-hover); color: var(--text); }
+
+  label.checkbox { display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text-dim); }
+  label.checkbox input { accent-color: var(--accent); }
+
+  #morphBtn {
+    background: var(--accent); color: #fff; border: none; border-radius: 6px;
+    padding: 7px 14px; cursor: pointer; font-size: 12px; font-weight: 600;
+    display: flex; align-items: center; gap: 6px;
+  }
+  #morphBtn:hover { filter: brightness(1.1); }
+  #morphBtn:disabled { opacity: .5; cursor: default; }
+
+  /* ---------- Main layout ---------- */
+  #main { flex: 1 1 auto; display: flex; min-height: 0; }
+
+  #sidebar {
+    width: 270px; flex: 0 0 auto;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; min-height: 0;
+  }
+  #sidebar h2 {
+    font-size: 11.5px; text-transform: uppercase; letter-spacing: .5px;
+    color: var(--text-dim); margin: 0; padding: 10px 12px 6px;
+  }
+  #sweepTable { overflow-y: auto; flex: 1 1 auto; }
+  .sweep-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 12px; border-bottom: 1px solid #262626;
+    cursor: pointer; transition: background .12s;
+  }
+  .sweep-row:hover { background: var(--panel-hover); }
+  .sweep-row.selected { background: #3a2426; }
+  .sweep-row .swatch { width: 10px; height: 10px; border-radius: 2px; flex: 0 0 auto; }
+  .sweep-row .info { flex: 1 1 auto; min-width: 0; }
+  .sweep-row .fz { font-size: 12px; font-weight: 600; }
+  .sweep-row .fz.unused { color: var(--text-dim); text-decoration: line-through; }
+  .sweep-row .meta-line { font-size: 10.5px; color: var(--text-dim); display: flex; gap: 8px; margin-top: 2px; }
+  .delta-bar-track { width: 46px; height: 4px; background: #444; border-radius: 2px; overflow: hidden; }
+  .delta-bar-fill { height: 100%; background: var(--accent); }
+  .toggle {
+    width: 30px; height: 16px; border-radius: 8px; background: #555;
+    position: relative; flex: 0 0 auto; transition: background .15s;
+  }
+  .toggle.on { background: #4CAF50; }
+  .toggle .knob {
+    position: absolute; top: 2px; left: 2px; width: 12px; height: 12px;
+    border-radius: 50%; background: #fff; transition: left .15s;
+  }
+  .toggle.on .knob { left: 16px; }
+
+  #legendHint {
+    font-size: 10.5px; color: var(--text-dim); padding: 8px 12px;
+    border-top: 1px solid var(--border);
+  }
+
+  #chartWrap { flex: 1 1 auto; min-width: 0; padding: 6px; }
+  #chart { width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="header">
+    <h1>TTC Cornering Viewer</h1>
+    <span class="sub">Fy / Mz / Mx ueber Schraeglaufwinkel &alpha; -- Prototyp (Darstellung only, Backend = MATLAB)</span>
+  </div>
+
+  <div id="toolbar">
+    <div class="seg-control" id="modeControl">
+      <button data-mode="raw">Rohdaten</button>
+      <button data-mode="smooth" class="active">Geglaettet</button>
+      <button data-mode="delta">Delta Overlay</button>
+    </div>
+
+    <label class="checkbox">
+      <input type="checkbox" id="hideUnused" />
+      Nicht verwendete ausblenden
+    </label>
+
+    <button id="morphBtn">&#9654; Morph-Animation (Roh &rarr; Geglaettet)</button>
+  </div>
+
+  <div id="main">
+    <div id="sidebar">
+      <h2>Sweeps (FZ-Niveau)</h2>
+      <div id="sweepTable"></div>
+      <div id="legendHint">Zeile anklicken = hervorheben &middot; Schalter = verwendet/gefiltert</div>
+    </div>
+    <div id="chartWrap"><div id="chart"></div></div>
+  </div>
+
+</div>
+
+<script>
+/* ============================================================
+   DATENVERTRAG (was MATLAB nach app.PlotHTML.Data schreiben muss)
+   ============================================================
+   {
+     xLabel: "Schraeglaufwinkel α [deg]",
+     channels: [
+       { key: "Fy", label: "Fy [N]" },
+       { key: "Mz", label: "Mz [Nm]" },
+       { key: "Mx", label: "Mx [Nm]" }
+     ],
+     sweeps: [
+       {
+         id: 0,                // 0-basiert, nur fuer JS-intern (Farbindex etc.)
+         origIndex: 7,          // 1-basierter Index in app.sweep (MATLAB) --
+                                 // WICHTIG fuer den Rueckweg bei Toggle-Events
+         fz: 1100,              // N, fuer Anzeige/Sortierung
+         used: true,            // entspricht SweepIsUsed(origIndex)
+         r2: 0.97,              // optional, aus Smoothing-Guete
+         sa: [...],             // Schraeglaufwinkel [deg], gemeinsame x-Achse
+         raw:    { Fy: [...], Mz: [...], Mx: [...] },
+         smooth: { Fy: [...], Mz: [...], Mx: [...] }
+       },
+       ...
+     ]
+   }
+   MATLAB-seitig: app.CorneringHTML.Data = payload; direkt als
+   MATLAB-struct/cell -- uihtml serialisiert das automatisch nach JS.
+   WICHTIG: sweeps als CELL-Array aufbauen (nicht struct-Array), sonst
+   wird ein einzelner Sweep in JS zum Objekt statt zum Array-Element.
+   ============================================================ */
+
+let chart = null;
+let htmlComponentRef = null;
+let __setupCalled = false; // Schutz gegen doppelten setup()-Aufruf
+let state = {
+  data: null,          // aktueller Datensatz (siehe Vertrag oben)
+  mode: 'smooth',       // 'raw' | 'smooth' | 'delta'
+  hideUnused: false,
+  selectedId: null      // hervorgehobener Sweep
+};
+
+/* ---------- Turbo-aehnliche Farbskala (Approximation) ---------- */
+const TURBO_STOPS = [
+  [48,18,59],[65,69,171],[70,117,237],[39,168,224],
+  [34,201,166],[122,213,68],[216,186,42],[238,108,44],[122,4,3]
+];
+function turboColor(t) {
+  t = Math.min(1, Math.max(0, t));
+  const n = TURBO_STOPS.length - 1;
+  const seg = t * n;
+  const i = Math.min(n - 1, Math.floor(seg));
+  const f = seg - i;
+  const a = TURBO_STOPS[i], b = TURBO_STOPS[i + 1];
+  const r = Math.round(a[0] + (b[0]-a[0])*f);
+  const g = Math.round(a[1] + (b[1]-a[1])*f);
+  const bl = Math.round(a[2] + (b[2]-a[2])*f);
+  return `rgb(${r},${g},${bl})`;
+}
+function colorForIndex(i, n) { return turboColor(n <= 1 ? 0 : i / (n - 1)); }
+
+/* ---------- Hilfsfunktionen fuer Delta-Band ---------- */
+function bandSeriesFromRawSmooth(raw, smooth) {
+  const lower = [], diff = [];
+  for (let i = 0; i < raw.length; i++) {
+    const lo = Math.min(raw[i], smooth[i]);
+    lower.push(lo);
+    diff.push(Math.abs(raw[i] - smooth[i]));
+  }
+  return { lower, diff };
+}
+function meanAbsDiff(raw, smooth) {
+  let s = 0;
+  for (let i = 0; i < raw.length; i++) s += Math.abs(raw[i] - smooth[i]);
+  return s / raw.length;
+}
+
+/* ============================================================
+   Sidebar-Tabelle
+   ============================================================ */
+function renderSweepTable() {
+  const container = document.getElementById('sweepTable');
+  container.innerHTML = '';
+  if (!state.data) return;
+  const sweeps = state.data.sweeps;
+
+  // Referenzwert fuer Delta-Bar-Skalierung (Fy-Kanal)
+  const maxDelta = Math.max(1e-6, ...sweeps.map(s => meanAbsDiff(s.raw.Fy, s.smooth.Fy)));
+
+  sweeps.forEach((s, idx) => {
+    const col = colorForIndex(idx, sweeps.length);
+    const row = document.createElement('div');
+    row.className = 'sweep-row' + (state.selectedId === s.id ? ' selected' : '');
+    const delta = meanAbsDiff(s.raw.Fy, s.smooth.Fy);
+    const deltaPct = Math.round((delta / maxDelta) * 100);
+
+    row.innerHTML = `
+      <div class="swatch" style="background:${s.used ? col : '#666'}"></div>
+      <div class="info">
+        <div class="fz ${s.used ? '' : 'unused'}">FZ &approx; ${Math.round(s.fz)} N</div>
+        <div class="meta-line">
+          <span>R&sup2; ${s.r2 != null ? s.r2.toFixed(3) : '--'}</span>
+          <span title="Mittlere |Roh-Geglaettet| Differenz (Fy)">&Delta; Glaettung</span>
+          <div class="delta-bar-track"><div class="delta-bar-fill" style="width:${deltaPct}%"></div></div>
+        </div>
+      </div>
+      <div class="toggle ${s.used ? 'on' : ''}" data-id="${s.id}"><div class="knob"></div></div>
+    `;
+
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('.toggle')) return; // Toggle handled separately
+      state.selectedId = (state.selectedId === s.id) ? null : s.id;
+      renderSweepTable();
+      renderChart();
+    });
+
+    row.querySelector('.toggle').addEventListener('click', (e) => {
+      e.stopPropagation();
+      s.used = !s.used;
+      renderSweepTable();
+      renderChart();
+      sendEvent('sweepUsedToggled', { id: s.id, origIndex: s.origIndex, used: s.used });
+    });
+
+    container.appendChild(row);
+  });
+}
+
+/* ============================================================
+   Chart-Aufbau
+   ============================================================ */
+function baseGridLayout(channels) {
+  const n = channels.length;
+  const gap = 0.06;
+  const rowH = (1 - gap * (n - 1) - 0.08) / n;
+  const grids = [], xAxes = [], yAxes = [];
+  channels.forEach((ch, i) => {
+    const top = 0.04 + i * (rowH + gap);
+    grids.push({ left: 55, right: 25, top: `${top*100}%`, height: `${rowH*100}%` });
+    xAxes.push({
+      gridIndex: i, type: 'value', name: i === n - 1 ? (state.data.xLabel || 'α [deg]') : '',
+      nameLocation: 'middle', nameGap: 24,
+      axisLabel: { show: i === n - 1, color: '#B0B0B0' },
+      axisLine: { lineStyle: { color: '#555' } },
+      splitLine: { lineStyle: { color: '#2E2E2E' } }
+    });
+    yAxes.push({
+      gridIndex: i, type: 'value', name: ch.label,
+      nameTextStyle: { color: '#B0B0B0', fontSize: 11 },
+      axisLabel: { color: '#B0B0B0' },
+      axisLine: { lineStyle: { color: '#555' } },
+      splitLine: { lineStyle: { color: '#2E2E2E' } }
+    });
+  });
+  return { grids, xAxes, yAxes };
+}
+
+function buildSeries(dataOverride) {
+  const d = state.data;
+  const series = [];
+  const sweeps = d.sweeps;
+
+  sweeps.forEach((s, idx) => {
+    if (state.hideUnused && !s.used) return;
+    const col = colorForIndex(idx, sweeps.length);
+    const isSelected = state.selectedId === s.id;
+    const dimmed = state.selectedId != null && !isSelected;
+    const greyedOut = !s.used;
+    const baseColor = greyedOut ? '#666666' : col;
+    const opacity = dimmed ? 0.15 : (greyedOut ? 0.45 : 1);
+    const width = isSelected ? 3 : (greyedOut ? 1 : 1.6);
+
+    d.channels.forEach((ch, gi) => {
+      const rawVals = s.raw[ch.key];
+      const smoothVals = s.smooth[ch.key];
+      const activeVals = dataOverride && dataOverride[s.id] && dataOverride[s.id][ch.key]
+        ? dataOverride[s.id][ch.key]
+        : (state.mode === 'raw' ? rawVals : smoothVals);
+
+      // Hauptlinie
+      series.push({
+        id: `s${s.id}_${ch.key}_main`,
+        name: `FZ≈${Math.round(s.fz)}N`,
+        type: 'line', showSymbol: false,
+        xAxisIndex: gi, yAxisIndex: gi,
+        data: s.sa.map((x, i) => [x, activeVals[i]]),
+        lineStyle: { color: baseColor, width, opacity, type: 'solid' },
+        z: isSelected ? 10 : 2,
+        animationDurationUpdate: 600,
+        animationEasingUpdate: 'cubicOut',
+        silent: true
+      });
+
+      if (state.mode === 'delta') {
+        // gestrichelte Rohkurve zusaetzlich
+        series.push({
+          id: `s${s.id}_${ch.key}_raw2`,
+          type: 'line', showSymbol: false,
+          xAxisIndex: gi, yAxisIndex: gi,
+          data: s.sa.map((x, i) => [x, rawVals[i]]),
+          lineStyle: { color: baseColor, width: Math.max(1, width - 0.6), opacity: opacity * 0.7, type: 'dashed' },
+          z: 1, silent: true
+        });
+        // Delta-Band (lower + gestapelter Diff-Bereich)
+        const { lower, diff } = bandSeriesFromRawSmooth(rawVals, smoothVals);
+        const stackId = `band_${s.id}_${ch.key}`;
+        series.push({
+          id: `s${s.id}_${ch.key}_bandLower`,
+          type: 'line', stack: stackId, showSymbol: false,
+          xAxisIndex: gi, yAxisIndex: gi,
+          data: s.sa.map((x, i) => [x, lower[i]]),
+          lineStyle: { opacity: 0 }, silent: true, z: 0
+        });
+        series.push({
+          id: `s${s.id}_${ch.key}_bandDiff`,
+          type: 'line', stack: stackId, showSymbol: false,
+          xAxisIndex: gi, yAxisIndex: gi,
+          data: s.sa.map((x, i) => [x, diff[i]]),
+          lineStyle: { opacity: 0 },
+          areaStyle: { color: baseColor, opacity: dimmed ? 0.04 : 0.16 },
+          silent: true, z: 0
+        });
+      }
+    });
+  });
+  return series;
+}
+
+function renderChart(dataOverride) {
+  const d = state.data;
+  if (!d || !chart) return;
+  const { grids, xAxes, yAxes } = baseGridLayout(d.channels);
+  chart.setOption({
+    backgroundColor: 'transparent',
+    grid: grids,
+    xAxis: xAxes,
+    yAxis: yAxes,
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: '#2A2A2A', borderColor: '#444', textStyle: { color: '#F2F2F2' }
+    },
+    series: buildSeries(dataOverride)
+  }, { replaceMerge: ['series'] });
+}
+
+/* ---------- Morph-Animation: Roh -> Geglaettet ---------- */
+function playMorphAnimation() {
+  if (!state.data) return;
+  const btn = document.getElementById('morphBtn');
+  btn.disabled = true;
+  const previousMode = state.mode;
+
+  // 1) Sofort auf Rohdaten springen (ohne Animation)
+  const rawOverride = {};
+  state.data.sweeps.forEach(s => { rawOverride[s.id] = s.raw; });
+  chart.setOption({ series: buildSeries(rawOverride) }, { replaceMerge: ['series'], silent: true });
+
+  // 2) Kurz danach zu geglaetteten Daten animieren
+  setTimeout(() => {
+    const smoothOverride = {};
+    state.data.sweeps.forEach(s => { smoothOverride[s.id] = s.smooth; });
+    chart.setOption({ series: buildSeries(smoothOverride) }, { replaceMerge: ['series'] });
+  }, 60);
+
+  // 3) Nach der Animation zurueck zum eigentlich gewaehlten Modus
+  setTimeout(() => {
+    renderChart();
+    btn.disabled = false;
+  }, 1000);
+}
+
+/* ============================================================
+   Toolbar-Wiring
+   ============================================================ */
+function wireToolbar() {
+  document.querySelectorAll('#modeControl button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#modeControl button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.mode = btn.dataset.mode;
+      renderChart();
+      sendEvent('modeChanged', { mode: state.mode });
+    });
+  });
+  document.getElementById('hideUnused').addEventListener('change', (e) => {
+    state.hideUnused = e.target.checked;
+    renderSweepTable();
+    renderChart();
+    sendEvent('hideUnusedChanged', { hideUnused: state.hideUnused });
+  });
+  document.getElementById('morphBtn').addEventListener('click', playMorphAnimation);
+}
+
+/* ============================================================
+   Datenfluss: MATLAB -> JS
+   ============================================================ */
+function updateData(newData) {
+  if (!newData) return;
+  state.data = newData;
+  if (state.selectedId != null && !newData.sweeps.some(s => s.id === state.selectedId)) {
+    state.selectedId = null;
+  }
+  renderSweepTable();
+  renderChart();
+}
+
+/* ============================================================
+   JS -> MATLAB
+   ============================================================ */
+function sendEvent(name, payload) {
+  if (htmlComponentRef && typeof htmlComponentRef.sendEventToMATLAB === 'function') {
+    htmlComponentRef.sendEventToMATLAB(name, payload);
+  } else {
+    console.log('[MATLAB EVENT]', name, payload);
+  }
+}
+
+/* ============================================================
+   Entry point -- wird von uihtml automatisch aufgerufen.
+   Im Standalone-Browser-Test rufen wir es unten selbst mit
+   einer Mock-htmlComponent auf.
+   ============================================================ */
+function setup(htmlComponent) {
+  if (__setupCalled) {
+    console.warn('setup() wurde bereits aufgerufen -- zweiter Aufruf wird ignoriert.');
+    return;
+  }
+  __setupCalled = true;
+  htmlComponentRef = htmlComponent;
+
+  if (typeof echarts === 'undefined') {
+    document.getElementById('chart').innerHTML =
+      '<div style="color:#C72229;padding:20px;font-size:13px;">' +
+      'Fehler: echarts.min.js konnte nicht geladen werden.<br>' +
+      'Pruefe, ob echarts.min.js im selben Ordner wie diese HTML-Datei liegt.' +
+      '</div>';
+    console.error('echarts ist undefined -- echarts.min.js wurde nicht geladen.');
+    return;
+  }
+
+  chart = echarts.init(document.getElementById('chart'), null, { renderer: 'canvas' });
+  chart.setOption({ animationDurationUpdate: 600, animationEasingUpdate: 'cubicOut' });
+  wireToolbar();
+  window.addEventListener('resize', () => chart && chart.resize());
+
+  htmlComponent.addEventListener('DataChanged', function () {
+    updateData(htmlComponent.Data);
+  });
+
+  if (htmlComponent.Data) {
+    updateData(htmlComponent.Data);
+  }
+}
+
+/* ============================================================
+   Mock-Daten + Mock-htmlComponent NUR fuer Standalone-Test.
+   In MATLAB ruft uihtml automatisch setup(echtesHtmlComponent) auf,
+   BEVOR dieser Timeout ablaeuft -- dank __setupCalled-Guard oben
+   greift der Bootstrap unten dann nicht mehr. Laeuft die Datei
+   standalone im Browser, ruft niemand setup() auf -- dann greift
+   der Bootstrap nach 200ms und baut Mock-Daten.
+   ============================================================ */
+function buildMockData() {
+  const fzLevels = [220, 450, 680, 900, 1120, 1350, 1550];
+  const nPts = 121;
+  const saDeg = Array.from({ length: nPts }, (_, i) => -12 + (24 * i) / (nPts - 1));
+
+  function pacejkaFy(saRad, fz) {
+    const B = 9, C = 1.4, D = 0.021 * fz, E = -1.2;
+    const x = saRad;
+    return D * Math.sin(C * Math.atan(B * x - E * (B * x - Math.atan(B * x))));
+  }
+  function pacejkaMz(saRad, fz) {
+    const B = 7, C = 1.9, D = 0.0009 * fz, E = 0.3;
+    const x = saRad;
+    return D * Math.sin(C * Math.atan(B * x - E * (B * x - Math.atan(B * x)))) * -1;
+  }
+  function pacejkaMx(saDegVal, fz) {
+    return 0.004 * fz * (saDegVal / 12) + 0.02 * fz;
+  }
+  function noise(scale) { return (Math.random() - 0.5) * scale; }
+
+  const sweeps = fzLevels.map((fz, id) => {
+    const sa = saDeg;
+    const rawFy = [], smFy = [], rawMz = [], smMz = [], rawMx = [], smMx = [];
+    sa.forEach((deg) => {
+      const rad = deg * Math.PI / 180;
+      const fyClean = pacejkaFy(rad, fz);
+      const mzClean = pacejkaMz(rad, fz);
+      const mxClean = pacejkaMx(deg, fz);
+      rawFy.push(fyClean + noise(fz * 0.03));
+      smFy.push(fyClean);
+      rawMz.push(mzClean + noise(Math.abs(fz) * 0.0025));
+      smMz.push(mzClean);
+      rawMx.push(mxClean + noise(Math.abs(fz) * 0.015));
+      smMx.push(mxClean);
+    });
+    return {
+      id, origIndex: id + 1, fz,
+      used: !(id === 2 || id === 5), // zwei Sweeps als "gefiltert" markiert, zur Demo
+      r2: 0.90 + Math.random() * 0.09,
+      sa,
+      raw: { Fy: rawFy, Mz: rawMz, Mx: rawMx },
+      smooth: { Fy: smFy, Mz: smMz, Mx: smMx }
+    };
+  });
+
+  return {
+    xLabel: 'Schraeglaufwinkel α [deg]',
+    channels: [
+      { key: 'Fy', label: 'Fy [N]' },
+      { key: 'Mz', label: 'Mz [Nm]' },
+      { key: 'Mx', label: 'Mx [Nm]' }
+    ],
+    sweeps
+  };
+}
+
+function createMockHtmlComponent() {
+  const listeners = {};
+  return {
+    Data: buildMockData(),
+    addEventListener(name, fn) { listeners[name] = listeners[name] || []; listeners[name].push(fn); },
+    sendEventToMATLAB(name, data) { console.log('[MOCK -> MATLAB]', name, data); }
+  };
+}
+
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    if (!__setupCalled) {
+      setup(createMockHtmlComponent());
+    }
+  }, 200);
+});
+</script>
+</body>
+</html>
