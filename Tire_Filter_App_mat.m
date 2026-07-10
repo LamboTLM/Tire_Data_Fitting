@@ -3,15 +3,9 @@ classdef Tire_Filter_App_mat < matlab.apps.AppBase
     % Properties that correspond to app components
     properties (Access = public)
         UIFigure                      matlab.ui.Figure
-        SmoothingPanel                matlab.ui.container.Panel
-        SmoothingRowsGrid             matlab.ui.container.GridLayout
-        SmoothingAddDropDown          matlab.ui.control.DropDown
-        FilterPanel                   matlab.ui.container.Panel
-        FilterRowsGrid                matlab.ui.container.GridLayout
-        HideUnusedCheckBox            matlab.ui.control.CheckBox
-        FilterAddDropDown             matlab.ui.control.DropDown
         AuswahlPanel                  matlab.ui.container.Panel
         LoadTireDataButton            matlab.ui.control.Button
+        ExportButton                  matlab.ui.control.Button
         Test_file_directroy           matlab.ui.control.EditField
         OpenDirectoryButton           matlab.ui.control.Button
         Panel                         matlab.ui.container.Panel
@@ -19,31 +13,17 @@ classdef Tire_Filter_App_mat < matlab.apps.AppBase
         DynamicseVLabel               matlab.ui.control.Label
         TabGroup2                     matlab.ui.container.TabGroup
         TestPreprocessingTab          matlab.ui.container.Tab
-        UIAxes_Sweep                  matlab.ui.control.UIAxes
-        UIAxes_Mu                     matlab.ui.control.UIAxes
-        UIAxes_Pneu                   matlab.ui.control.UIAxes
         CorneringTab_2                matlab.ui.container.Tab
-        UIAxes                        matlab.ui.control.UIAxes
-        UIAxes_2                      matlab.ui.control.UIAxes
-        UIAxes_3                      matlab.ui.control.UIAxes
         CorneringKennwerteTab_2       matlab.ui.container.Tab
-        UIAxes_CK_1                   matlab.ui.control.UIAxes
-        UIAxes_CK_2                   matlab.ui.control.UIAxes
-        UIAxes_CK_3                   matlab.ui.control.UIAxes
         CamberSweepTab_2              matlab.ui.container.Tab
-        UIAxes_Cam_1                  matlab.ui.control.UIAxes
-        UIAxes_Cam_2                  matlab.ui.control.UIAxes
-        UIAxes_Cam_3                  matlab.ui.control.UIAxes
-        DriveBrakeTab_2                matlab.ui.container.Tab
+        DriveBrakeTab_2               matlab.ui.container.Tab
         UIAxes_DB_1                   matlab.ui.control.UIAxes
         UIAxes_DB_2                   matlab.ui.control.UIAxes
         UIAxes_DB_3                   matlab.ui.control.UIAxes
-        CombinedSlipTab_2              matlab.ui.container.Tab
+        CombinedSlipTab_2             matlab.ui.container.Tab
         UIAxes_CS_1                   matlab.ui.control.UIAxes
         UIAxes_CS_2                   matlab.ui.control.UIAxes
         ColdtohotVerschleissTab       matlab.ui.container.Tab
-        UIAxes_CH_1                   matlab.ui.control.UIAxes
-        UIAxes_CH_2                   matlab.ui.control.UIAxes
         TransientTab_2                matlab.ui.container.Tab
         UIAxes_TR_1                   matlab.ui.control.UIAxes
         UIAxes_TR_2                   matlab.ui.control.UIAxes
@@ -52,25 +32,13 @@ classdef Tire_Filter_App_mat < matlab.apps.AppBase
         UIAxes_SV_2                   matlab.ui.control.UIAxes
         UIAxes_SV_3                   matlab.ui.control.UIAxes
         RohdatenExplorerTab_2         matlab.ui.container.Tab
-        UIAxes_RE_1                   matlab.ui.control.UIAxes
-        UIAxes_RE_2                   matlab.ui.control.UIAxes
         ManuelSelctionTab             matlab.ui.container.Tab
-        ShowFilteredYellowCheckBox    matlab.ui.control.CheckBox
-        UIAxes_MS_1                   matlab.ui.control.UIAxes
-        UIAxes_MS_2                   matlab.ui.control.UIAxes
-        UIAxes_MS_3                   matlab.ui.control.UIAxes
-        FrequenzanalyseTab            matlab.ui.container.Tab
-        UIAxes_FA_Time                matlab.ui.control.UIAxes
-        UIAxes_FA_Spec                matlab.ui.control.UIAxes
-        FA_SweepDropDown              matlab.ui.control.DropDown
-        FA_ChannelDropDown            matlab.ui.control.DropDown
-        FA_AnalyzeButton              matlab.ui.control.Button
-        FA_ApplyCutoffButton          matlab.ui.control.Button
-        FA_ResultLabel                matlab.ui.control.Label
     end
 
 
-    %% Definieren der Filter Config
+    %% Property Definitionene
+
+    % Propertys für Backend
     properties (Access = private)
         % Klassifikation
         SA_THRESH_DEG (1,1) double = 0.5    % [deg] ab wann SA "aktiv"
@@ -88,7 +56,7 @@ classdef Tire_Filter_App_mat < matlab.apps.AppBase
         sweep
         tire_file
         FilterRows = struct('Parameter', {}, 'ParameterLabel', {}, 'RowLayout', {}, 'ConditionDropDown', {}, 'Value1EditField', {}, 'Value2EditField', {}, 'DeleteButton', {})
-        SmoothingRows = struct('Parameter', {}, 'RowLayout', {}, 'TypeDropDown', {}, 'EnabledCheckBox', {}, 'Param1Label', {}, 'Param1EditField', {}, 'Param2Label', {}, 'Param2EditField', {}, 'R2Label', {}, 'DeleteButton', {})
+        SmoothingRows = struct('Parameter', {}, 'RowLayout', {}, 'TypeDropDown', {}, 'EnabledCheckBox', {}, 'Param1Label', {}, 'Param1EditField', {}, 'Param2Label', {}, 'Param2EditField', {}, 'DeleteButton', {})
 
         % Nutzungs-Masken (je ein logical-Array, gleiche Groesse wie app.sweep)
         SweepIsUsed logical = []      % EFFEKTIVE Maske (Filter & ~Manuell) - wird von allen Plots konsultiert
@@ -99,22 +67,67 @@ classdef Tire_Filter_App_mat < matlab.apps.AppBase
         KNOWN_CHANNELS cell = {'alpha', 'kappa', 'Fx', 'Fy', 'Fz', 'Mx', 'Mz', 'IP', 'gamma', 'V', 'omega', 'TtreadI', 'TtreadC', 'TtreadO'} % Bekannte Messkanaele, unabhaengig vom Ladezustand
 
         % Smothings die gemacht werden koennen
-        SMOOTHING_TYPES cell = {'Butterworth', 'Bessel', 'Moving Average', 'Savitzky-Golay', 'Median', 'Hampel (Despike)'}
+        SMOOTHING_TYPES cell = {'Butterworth', 'Bessel', 'Savitzky-Golay', 'Moving Average', 'Median', 'Hampel'}
 
-        % Frequenzanalyse-Tab: letzter Analyse-Zustand (fuer "Cutoff uebernehmen")
-        FA_LastCutoffSuggestion double = NaN
-        FA_LastChannel char = ''
+       NOMINAL_LEVELS struct = struct( ...
+              'Fz',    [222.4 444.8 667.2 889.6 1112.1 1556.9], ...  % [N]   (50/100/150/200/250/350 lbf)
+              'IP',    [55158 68948 82737 96527], ...                 % [Pa]  (8/10/12/14 psi)
+              'gamma', [0 0.0349 0.0698], ...                         % [rad] (0/2/4 deg)
+              'V',     [11.2 20.1])                                   % [m/s] (25/45 mph)
+
+       ZeroOffset struct = struct('alpha0_deg', {}, 'mz0', {})
+    
     end
 
+    % Properties for Java Scripts
+    properties (Access = public)
+        StartupHTML                   matlab.ui.control.HTML
+        LogoTopRight                  matlab.ui.control.Image
+
+        UIFigure_html                 matlab.ui.Figure
+        FilterSmoothingHTML           matlab.ui.control.HTML
+        CorneringHTML                 matlab.ui.control.HTML
+        Cornering_kennwerte_HTML      matlab.ui.control.HTML
+        Manual_selection_html         matlab.ui.control.HTML
+        test_preprocessing_HTML       matlab.ui.control.HTML
+        cold_to_hot_HTML              matlab.ui.control.HTML
+        camber_sweep_HTML             matlab.ui.control.HTML
+        rohdaten_explorer_HTML        matlab.ui.control.HTML
+    end
+
+    % Alle Eigenen functions
     methods (Access = private)
         %% Reifenobjecte
         
-        % Main function
         function load_Tire_Data(app)
+            % LOAD_TIRE_DATA Laedt einen neuen Reifentest und ersetzt den
+            % kompletten sweep-indizierten State der App.
+            %
+            % Autor: Lambo || Datum: 10.07.26
+            % Changelog:
+            %   10.07.26 - Expliziter Reset von SweepIsUsed/FilterIsUsed/
+            %              ManualExclude/ZeroOffset VOR dem Laden. Ohne
+            %              diesen Reset behalten die Masken ihre Groesse
+            %              aus dem vorherigen Test: Stimmt die Sweep-Anzahl
+            %              nicht mehr, crasht update_combined_mask bei der
+            %              UND-Verknuepfung FilterIsUsed & ~ManualExclude
+            %              (Dimensionskonflikt) - und weil der Crash VOR
+            %              refresh_all_plots() liegt, bleiben alle Tabs auf
+            %              dem Plot des alten Tests stehen. Stimmt die
+            %              Anzahl zufaellig, wird stattdessen der manuelle
+            %              Ausschluss des alten Tests auf den neuen
+            %              uebertragen (falsche Sweeps ausgeblendet).
+
+            app.sweep          = [];
+            app.ZeroOffset     = struct('alpha0_deg', {}, 'mz0', {});
+            app.SweepIsUsed    = [];
+            app.FilterIsUsed   = [];
+            app.ManualExclude  = [];
 
             % Laden des Dateipfads aus dem Textfeld
             tire_file_full = string(app.Test_file_directroy.Value);
             tire_file_full = strip(tire_file_full, 'both', "'");
+            app.tire_file = tire_file_full; % fuer Default-Namen beim Export
             tire_data_raw = load(tire_file_full);
 
             % tireData-Objekt erstellen und befüllen
@@ -125,12 +138,10 @@ classdef Tire_Filter_App_mat < matlab.apps.AppBase
 
             % Abfertigen der Sweeps
             app.sweep = segs;
+            app.ZeroOffset = app.compute_zero_offsets(segs); % NEU: Punkt 3
 
-            % Frequenzanalyse-Tab: Sweep-Auswahl neu befuellen
-            app.populate_fa_sweep_dropdown();
         end
 
-        % Helper Functions
         function [tdnew] = create_Tire_object(app)
             % Erstellt ein tireData Object im SAE Koordinaten system
 
@@ -316,796 +327,345 @@ classdef Tire_Filter_App_mat < matlab.apps.AppBase
             end
         end
 
+        %% Daten Verarbeitung
+
+        function offsets = compute_zero_offsets(app, sweeps)
+            % COMPUTE_ZERO_OFFSETS Berechnet fuer alle Lateral-Sweeps die
+            % Konizitaets- (alpha0) und Plysteer-Offsets (mz0) und liefert ein
+            % Parallel-Array zu 'sweeps' zurueck (gleiche Indizierung wie
+            % app.sweep / app.SweepIsUsed). Fuer Longitudinal/Combined/Undefined
+            % Sweeps bleiben die Werte 0.
+            %
+            % Autor: Lambo || Datum: 09.07.26
+
+            n = numel(sweeps);
+            offsets = struct('alpha0_deg', num2cell(zeros(1, n)), 'mz0', num2cell(zeros(1, n)));
+
+            for k = 1:n
+                if sweeps(k).TestMethod == "Lateral"
+                    [a0, m0] = app.compute_single_zero_offset(sweeps(k));
+                    offsets(k).alpha0_deg = a0;
+                    offsets(k).mz0 = m0;
+                end
+            end
+        end
+
+        function [alpha0_deg, mz0] = compute_single_zero_offset(app, s)
+            % COMPUTE_SINGLE_ZERO_OFFSET Bestimmt fuer einen einzelnen
+            % Lateral-Sweep die SA-Nullstelle von Fy (Konizitaet) und den
+            % zugehoerigen Mz-Offset (Plysteer).
+            %
+            % VORGEHEN (Standard-TTC-Workflow):
+            %   1. Auf- und Absweep anhand des Vorzeichens von d(alpha)/dt trennen
+            %   2. Beide Aeste auf ein gemeinsames SA-Gitter interpolieren und
+            %      mitteln -> eliminiert hysteresebedingte Verschiebung
+            %   3. Nullstelle alpha0 von Fy_avg(alpha) im Fitband per linearer
+            %      Regression bestimmen
+            %   4. Mz_avg an der Stelle alpha0 auswerten = Plysteer-Offset mz0
+            %
+            % ANWENDUNG (in den Plot-Functions):
+            %   alpha_corrected = alpha - alpha0_deg   % SA-Achse verschoben
+            %   mz_corrected    = mz - mz0             % Mz um Offset bereinigt
+            %   Fy selbst wird NICHT verschoben - durch die SA-Verschiebung geht
+            %   die Kurve automatisch durch den Ursprung.
+            %
+            % Autor: Lambo || Datum: 09.07.26
+
+            ZERO_BAND_DEG = 3.0; % [deg] Fitband um die Fy-Nullstelle
+            SMOOTH_WIN = 31;     % [Samples] feste Glaettung NUR fuer die Nullstellensuche
+            % (unabhaengig von den user-waehlbaren Smoothing-Settings,
+            % damit die Offset-Berechnung beim Laden deterministisch ist)
+
+            alpha_deg = rad2deg(s.alpha(:));
+            fy = movmean(s.Fy(:), SMOOTH_WIN);
+            mz = movmean(s.Mz(:), SMOOTH_WIN);
+
+            % 1. Auf-/Absweep trennen
+            d_alpha = [diff(alpha_deg); 0];
+            up_idx = d_alpha >= 0;
+            down_idx = ~up_idx;
+
+            if nnz(up_idx) < 5 || nnz(down_idx) < 5
+                alpha_grid = alpha_deg;
+                fy_avg = fy;
+                mz_avg = mz;
+            else
+                [alpha_up_s, ord_u] = sort(alpha_deg(up_idx));
+                fy_tmp = fy(up_idx);   fy_up_s = fy_tmp(ord_u);
+                mz_tmp = mz(up_idx);   mz_up_s = mz_tmp(ord_u);
+
+                [alpha_down_s, ord_d] = sort(alpha_deg(down_idx));
+                fy_tmp = fy(down_idx); fy_down_s = fy_tmp(ord_d);
+                mz_tmp = mz(down_idx); mz_down_s = mz_tmp(ord_d);
+
+                % Doppelte SA-Stuetzstellen entfernen (Mittelwert der
+                % zugehoerigen y-Werte) - interp1 verlangt eindeutige
+                % Stuetzstellen, sonst "Sample points must be unique"
+                [alpha_up_s, fy_up_s, mz_up_s] = app.dedupe_xy(alpha_up_s, fy_up_s, mz_up_s);
+                [alpha_down_s, fy_down_s, mz_down_s] = app.dedupe_xy(alpha_down_s, fy_down_s, mz_down_s);
+
+                lo = max(min(alpha_up_s), min(alpha_down_s));
+                hi = min(max(alpha_up_s), max(alpha_down_s));
+
+                if hi <= lo
+                    alpha_grid = alpha_deg; fy_avg = fy; mz_avg = mz;
+                else
+                    alpha_grid = linspace(lo, hi, 200)';
+                    fy_up_i   = interp1(alpha_up_s,   fy_up_s,   alpha_grid, 'linear');
+                    fy_down_i = interp1(alpha_down_s, fy_down_s, alpha_grid, 'linear');
+                    mz_up_i   = interp1(alpha_up_s,   mz_up_s,   alpha_grid, 'linear');
+                    mz_down_i = interp1(alpha_down_s, mz_down_s, alpha_grid, 'linear');
+                    fy_avg = mean([fy_up_i, fy_down_i], 2);
+                    mz_avg = mean([mz_up_i, mz_down_i], 2);
+                end
+            end
+
+            % 2. Nullstelle von Fy_avg(alpha) per linearer Regression im Fitband
+            idx_band = abs(alpha_grid) <= ZERO_BAND_DEG;
+            if nnz(idx_band) < 3
+                alpha0_deg = 0; mz0 = 0; % Fallback: zu wenig Punkte -> keine Korrektur
+                return
+            end
+
+            p_fy = polyfit(alpha_grid(idx_band), fy_avg(idx_band), 1);
+            if abs(p_fy(1)) < eps
+                alpha0_deg = 0;
+            else
+                alpha0_deg = -p_fy(2) / p_fy(1); % [deg] Konizitaets-Offset (Nullstelle)
+            end
+
+            % 3. Mz-Offset (Plysteer) = Wert der gemittelten Mz-Kurve an alpha0
+            p_mz = polyfit(alpha_grid(idx_band), mz_avg(idx_band), 1);
+            mz0 = polyval(p_mz, alpha0_deg); % [Nm]
+        end
+
+        function [x_u, varargout] = dedupe_xy(~, x, varargin)
+            % DEDUPE_XY Entfernt doppelte Stuetzstellen in x, indem alle
+            % zugehoerigen y-Werte (varargin) pro eindeutigem x-Wert
+            % gemittelt werden. interp1 verlangt eindeutige Stuetzstellen -
+            % ohne diese Bereinigung wirft interp1 bei Sweeps mit
+            % wiederholten SA-Samples (z.B. Haltephasen) den Fehler
+            % "Sample points must be unique".
+            %
+            % EINGABE:
+            %   x:        Stuetzstellen-Vektor (z.B. sortierte SA-Werte)
+            %   varargin: Beliebig viele y-Vektoren gleicher Laenge wie x
+            % AUSGABE:
+            %   x_u:      Eindeutige, aufsteigend sortierte Stuetzstellen
+            %   varargout: Gemittelte y-Vektoren (gleiche Reihenfolge wie varargin)
+            %
+            % Autor: Lambo || Datum: 10.07.26
+
+            [x_u, ~, ic] = unique(x(:));
+            varargout = cell(1, numel(varargin));
+            for k = 1:numel(varargin)
+                varargout{k} = accumarray(ic, varargin{k}(:), [], @mean);
+            end
+        end
+
         %%  Plotten
-
-        function plot_cornering(app)
-            % PLOT_CORNERING Cornering-Plots: FY, MZ, MX ueber Schraeglaufwinkel SA,
-            % farbcodiert nach FZ-Niveau. Nur reine SA-Sweeps (TestMethod = 'Lateral').
-            % Beruecksichtigt die effektive Nutzungsmaske (SweepIsUsed = Filter & ~Manuell)
-            % und aktive Smoothing-Profile.
+        
+        function refresh_all_plots(app)
+            % REFRESH_ALL_PLOTS Zeichnet ALLE Plots der App neu. Zentrale
+            % Stelle, die von Filter-, Smoothing- und manuellen
+            % Auswahl-Aenderungen aufgerufen wird.
             %
-            % Autor: Lambo || Datum: 07.07.26
+            % Autor: Lambo || Datum: 08.07.26
             % Changelog:
-            %   07.07.26 - Smoothing-Integration ueber smooth_channel() ergaenzt
+            %   08.07.26 - Explizites cla('reset') statt cla() um Ghost-Plots
+            %              zu vermeiden. Hold-State wird vor cla zurückgesetzt.
 
-            methods = [app.sweep.TestMethod];
-            is_lateral = (methods == "Lateral");
-            lateral_idx = find(is_lateral);
-            lateral_sweeps = app.sweep(lateral_idx);
-
-            if isempty(lateral_sweeps)
+            if isempty(app.sweep)
                 return
             end
 
-            if isempty(app.SweepIsUsed)
-                app.SweepIsUsed = true(size(app.sweep));
-            end
-
-            fz_levels = arrayfun(@(s) median(s.Fz, 'omitnan'), lateral_sweeps);
-            cmap = turbo(numel(lateral_sweeps));
-            hide_unused = app.HideUnusedCheckBox.Value;
-
-            app.clear_axes(app.UIAxes); hold(app.UIAxes, 'on');
-            app.clear_axes(app.UIAxes_2); hold(app.UIAxes_2, 'on');
-            app.clear_axes(app.UIAxes_3); hold(app.UIAxes_3, 'on');
-
-            for k = 1:numel(lateral_sweeps)
-                orig_idx = lateral_idx(k);
-                is_used = app.SweepIsUsed(orig_idx);
-                if ~is_used && hide_unused
-                    continue
-                end
-
-                s = lateral_sweeps(k);
-                sa_deg = rad2deg(s.alpha);
-
-                fy_plot = app.smooth_channel(s, 'Fy', s.Fy);
-                mz_plot = app.smooth_channel(s, 'Mz', s.Mz);
-                mx_plot = app.smooth_channel(s, 'Mx', s.Mx);
-
-                if is_used
-                    col = cmap(k, :);
-                    lw = 1.0;
-                    dname = sprintf('FZ \\approx %.0f N', fz_levels(k));
-                else
-                    col = [0.5 0.5 0.5];
-                    lw = 0.5;
-                    dname = sprintf('FZ \\approx %.0f N (gefiltert)', fz_levels(k));
-                end
-
-                plot(app.UIAxes, sa_deg, fy_plot, 'Color', col, 'LineWidth', lw, 'DisplayName', dname);
-                plot(app.UIAxes_2, sa_deg, mz_plot, 'Color', col, 'LineWidth', lw, 'HandleVisibility', 'off');
-                plot(app.UIAxes_3, sa_deg, mx_plot, 'Color', col, 'LineWidth', lw, 'HandleVisibility', 'off');
-            end
-
-            hold(app.UIAxes, 'off'); hold(app.UIAxes_2, 'off'); hold(app.UIAxes_3, 'off');
-            legend(app.UIAxes, 'show', 'Location', 'best', 'Interpreter', 'tex');
+            plot_cornering_html(app)
+            plot_cornering_kennwerte_html(app)
+            plot_manual_selection_html(app)
+            plot_test_preprocessing_html(app)
+            plot_camber_sweep_html(app)
+            % app.plot_drive_brake();
+            % app.plot_combined_slip();
+            plot_cold_to_hot_html(app)
+            % app.plot_transient();
+            % app.plot_speed_vergleich();
+            plot_rohdaten_explorer_html(app)
         end
 
-        function plot_test_preprocessing(app)
-            % PLOT_TEST_PREPROCESSING Test-Preprocessing-Plots: Rohdatenverlauf mit
-            % Sweep-Grenzen (ET, alle TestMethods), normierte Reibwertkurve
-            % (mu_y = FY/|FZ|) und Pneumatic Trail (t_p = -MZ/FY). Reibwertkurve/
-            % Pneumatic Trail nur fuer Lateral-Sweeps. Beruecksichtigt die
-            % effektive Nutzungsmaske (SweepIsUsed) und Smoothing-Profile.
+        function plot_cornering_html(app)
+            % PLOT_CORNERING_HTML Baut den Datenvertrag fuer das ECharts-
+            % Cornering-Widget (CorneringHTML) aus den TestMethod=='Lateral'
+            % Sweeps und schreibt ihn nach app.CorneringHTML.Data. Ersetzt
+            % die reine MATLAB-Plot-Funktion plot_cornering() fuer die
+            % Darstellung -- Filter-/Smoothing-Backend bleibt unveraendert.
             %
-            % Autor: Lambo || Datum: 07.07.26
+            % Autor: Lambo || Datum: 08.07.26
 
-            FY_THRESHOLD = 50; % [N] Mindest-FY fuer Pneumatic-Trail-Berechnung
+            if isempty(app.sweep)
+                return
+            end
+            if isempty(app.CorneringHTML) || ~isvalid(app.CorneringHTML)
+                return
+            end
 
+            methods_ = [app.sweep.TestMethod];
+            is_lateral = (methods_ == "Lateral");
+            lateral_idx = find(is_lateral);
+            lateral_sweeps = app.sweep(lateral_idx);
+            if isempty(lateral_sweeps)
+                return
+            end
             if isempty(app.SweepIsUsed)
                 app.SweepIsUsed = true(size(app.sweep));
             end
 
-            hide_unused = app.HideUnusedCheckBox.Value;
-
-            ax_sweep = app.UIAxes_Sweep;
-            app.clear_axes(ax_sweep); hold(ax_sweep, 'on');
-
-            method_colors = containers.Map( ...
-                {'Lateral', 'Longitudinal', 'Combined', 'Undefined'}, ...
-                {[0.78 0.13 0.16], [0.20 0.60 0.90], [0.90 0.70 0.10], [0.50 0.50 0.50]});
-
-            for k = 1:numel(app.sweep)
-                is_used = app.SweepIsUsed(k);
-                if ~is_used && hide_unused
-                    continue
-                end
-
-                s = app.sweep(k);
-                fy_plot = app.smooth_channel(s, 'Fy', s.Fy);
-                method_str = char(s.TestMethod);
-
-                if isKey(method_colors, method_str)
-                    col = method_colors(method_str);
-                else
-                    col = [0.5 0.5 0.5];
-                end
-                if ~is_used
-                    col = [0.4 0.4 0.4];
-                end
-
-                lw = 1.0 * is_used + 0.5 * ~is_used;
-                plot(ax_sweep, s.et, fy_plot, 'Color', col, 'LineWidth', lw, 'HandleVisibility', 'off');
-
-                if k > 1
-                    xline(ax_sweep, s.et(1), '--', 'Color', [0.3 0.3 0.3], 'HandleVisibility', 'off');
-                end
-            end
-
-            method_names = keys(method_colors);
-            for m = 1:numel(method_names)
-                plot(ax_sweep, NaN, NaN, 'Color', method_colors(method_names{m}), 'DisplayName', method_names{m});
-            end
-
-            hold(ax_sweep, 'off');
-            legend(ax_sweep, 'show', 'Location', 'best');
-
-            methods = [app.sweep.TestMethod];
-            is_lateral = (methods == "Lateral");
-            lateral_idx = find(is_lateral);
-            lateral_sweeps = app.sweep(lateral_idx);
-
-            if isempty(lateral_sweeps)
-                return
-            end
-
-            fz_levels = arrayfun(@(s) median(s.Fz, 'omitnan'), lateral_sweeps);
-            cmap = turbo(numel(lateral_sweeps));
-
-            app.clear_axes(app.UIAxes_Mu); hold(app.UIAxes_Mu, 'on');
-            app.clear_axes(app.UIAxes_Pneu); hold(app.UIAxes_Pneu, 'on');
-
+            sweeps_payload = cell(1, numel(lateral_sweeps));
             for k = 1:numel(lateral_sweeps)
                 orig_idx = lateral_idx(k);
-                is_used = app.SweepIsUsed(orig_idx);
-                if ~is_used && hide_unused
-                    continue
-                end
-
                 s = lateral_sweeps(k);
-                sa_deg = rad2deg(s.alpha);
 
-                fy_plot = app.smooth_channel(s, 'Fy', s.Fy);
-                fz_plot = app.smooth_channel(s, 'Fz', s.Fz);
-                mz_plot = app.smooth_channel(s, 'Mz', s.Mz);
+                sa_deg    = rad2deg(s.alpha) - app.ZeroOffset(orig_idx).alpha0_deg;
+                fy_smooth = app.smooth_channel(s, 'Fy', s.Fy);
+                mz_smooth = app.smooth_channel(s, 'Mz', s.Mz) - app.ZeroOffset(orig_idx).mz0;
+                mx_smooth = app.smooth_channel(s, 'Mx', s.Mx);
 
-                if is_used
-                    col = cmap(k, :);
-                    lw = 1.0;
-                    dname = sprintf('FZ \\approx %.0f N', fz_levels(k));
-                else
-                    col = [0.5 0.5 0.5];
-                    lw = 0.5;
-                    dname = sprintf('FZ \\approx %.0f N (gefiltert)', fz_levels(k));
-                end
-
-                mu_y = fy_plot ./ abs(fz_plot);
-                plot(app.UIAxes_Mu, sa_deg, mu_y, 'Color', col, 'LineWidth', lw, 'DisplayName', dname);
-
-                valid = abs(fy_plot) > FY_THRESHOLD;
-                t_p = -mz_plot(valid) ./ fy_plot(valid);
-                plot(app.UIAxes_Pneu, sa_deg(valid), t_p, 'Color', col, 'LineWidth', lw, 'HandleVisibility', 'off');
+                sweeps_payload{k} = struct( ...
+                    'id',        k - 1, ...                    % 0-basiert fuer JS
+                    'origIndex', orig_idx, ...                  % 1-basiert, Rueckweg nach MATLAB
+                    'fz',        median(s.Fz, 'omitnan'), ...
+                    'used',      logical(app.SweepIsUsed(orig_idx)), ...
+                    'r2',        app.r2_quality(s.Fy, fy_smooth), ...
+                    'sa',        sa_deg(:)', ...
+                    'raw',       struct('Fy', s.Fy(:)', 'Mz', s.Mz(:)', 'Mx', s.Mx(:)'), ...
+                    'smooth',    struct('Fy', fy_smooth(:)', 'Mz', mz_smooth(:)', 'Mx', mx_smooth(:)') ...
+                    );
             end
 
-            hold(app.UIAxes_Mu, 'off'); hold(app.UIAxes_Pneu, 'off');
-            legend(app.UIAxes_Mu, 'show', 'Location', 'best', 'Interpreter', 'tex');
+            payload = struct( ...
+                'xLabel',   'Schraeglaufwinkel alpha [deg]', ...
+                'channels', {{ ...
+                struct('key', 'Fy', 'label', 'Fy [N]'), ...
+                struct('key', 'Mz', 'label', 'Mz [Nm]'), ...
+                struct('key', 'Mx', 'label', 'Mx [Nm]') ...
+                }}, ...
+                'sweeps',   {sweeps_payload} ...
+                );
+
+            app.CorneringHTML.Data = payload;
         end
 
-        function plot_cornering_kennwerte(app)
-            % PLOT_CORNERING_KENNWERTE Extrahiert charakteristische Kennwerte
-            % der Lateral-Sweeps und stellt sie ueber der Normalkraft FZ dar.
+        function plot_cornering_kennwerte_html(app)
+            % PLOT_CORNERING_KENNWERTE_HTML Baut den Datenvertrag fuer das ECharts-
+            % Kennwerte-Widget (KennwerteHTML) aus den TestMethod=='Lateral' Sweeps
+            % und schreibt ihn nach app.KennwerteHTML.Data. Ersetzt die reine
+            % MATLAB-Plot-Funktion plot_cornering_kennwerte() (UIAxes_CK_1/2/3) fuer
+            % die Darstellung -- Kennwert-Berechnung (FYmax, mu_max, C_Fy,alpha)
+            % bleibt unveraendert. Hide-Unused-Logik wandert vom MATLAB-seitigen
+            % HideUnusedCheckBox in den client-seitigen Toggle des HTML-Widgets;
+            % es werden daher immer ALLE Lateral-Sweeps berechnet und uebergeben.
             %
-            % Autor: Lambo || Datum: 07.07.26
+            % Zweck: Kennwerte-Payload fuer uihtml-Kennwerte-Viewer
+            % Abhaengigkeiten: app.sweep, app.SweepIsUsed, app.smooth_channel(), app.KennwerteHTML
+            % Autor: Lambo || Datum: 08.07.26
+            %
+            % Changelog:
+            %   08.07.26 - Lambo - Initiale Version (ersetzt plot_cornering_kennwerte)
 
-            ZERO_BAND_DEG = 1.5; % [deg] Band um SA = 0 fuer Steigungsfit
+            % Konfiguration
+            ZERO_BAND_DEG = 1.5; % [deg] Band um SA = 0 fuer Steigungsfit (C_Fy,alpha)
 
-            methods = [app.sweep.TestMethod];
-            is_lateral = (methods == "Lateral");
+            if isempty(app.sweep)
+                return
+            end
+            if isempty(app.Cornering_kennwerte_HTML) || ~isvalid(app.Cornering_kennwerte_HTML)
+                return
+            end
+
+            % Vorberechnungen
+            methods_ = [app.sweep.TestMethod];
+            is_lateral = (methods_ == "Lateral");
             lateral_idx = find(is_lateral);
             lateral_sweeps = app.sweep(lateral_idx);
 
             if isempty(lateral_sweeps)
                 return
             end
-
             if isempty(app.SweepIsUsed)
                 app.SweepIsUsed = true(size(app.sweep));
             end
 
-            hide_unused = app.HideUnusedCheckBox.Value;
+            n = numel(lateral_sweeps); % [-] Anzahl Lateral-Sweeps
 
-            n = numel(lateral_sweeps);
-            fz_vec = zeros(n, 1);
-            fy_max_vec = zeros(n, 1);
-            mu_max_vec = zeros(n, 1);
-            sa_fy_max_vec = zeros(n, 1);
-            c_fy_alpha_vec = zeros(n, 1);
-            mz_max_vec = zeros(n, 1);
-
+            % Berechnung
+            sweeps_payload = cell(1, n);
             for k = 1:n
                 orig_idx = lateral_idx(k);
                 s = lateral_sweeps(k);
-                fz_vec(k) = median(s.Fz, 'omitnan');
 
-                if ~app.SweepIsUsed(orig_idx) && hide_unused
-                    continue
-                end
-
-                sa_deg = rad2deg(s.alpha);
+                sa_deg = rad2deg(s.alpha) - app.ZeroOffset(orig_idx).alpha0_deg;
                 fy_plot = app.smooth_channel(s, 'Fy', s.Fy);
                 fz_plot = app.smooth_channel(s, 'Fz', s.Fz);
-                mz_plot = app.smooth_channel(s, 'Mz', s.Mz);
 
                 [fy_max_val, idx_fy_max] = max(abs(fy_plot));
-                fy_max_vec(k) = fy_max_val * sign(fy_plot(idx_fy_max));
-                sa_fy_max_vec(k) = sa_deg(idx_fy_max);
-                mu_max_vec(k) = max(abs(fy_plot ./ abs(fz_plot)), [], 'omitnan');
-                mz_max_vec(k) = max(abs(mz_plot), [], 'omitnan');
+                fy_max = fy_max_val * sign(fy_plot(idx_fy_max)); % [N] vorzeichenbehaftet
+                mu_max = app.calc_mu_max_robust(fy_plot, fz_plot); % [-]
 
                 idx_zero = abs(sa_deg) <= ZERO_BAND_DEG;
                 if sum(idx_zero) >= 3
                     p = polyfit(sa_deg(idx_zero), fy_plot(idx_zero), 1);
-                    c_fy_alpha_vec(k) = p(1);
+                    c_fy_alpha = p(1); % [N/deg]
                 else
-                    c_fy_alpha_vec(k) = NaN;
+                    c_fy_alpha = NaN;
                 end
+
+                sweeps_payload{k} = struct( ...
+                    'id',        k - 1, ...                    % 0-basiert fuer JS
+                    'origIndex', orig_idx, ...                  % 1-basiert, Rueckweg nach MATLAB
+                    'fz',        median(s.Fz, 'omitnan'), ...
+                    'used',      logical(app.SweepIsUsed(orig_idx)), ...
+                    'fyMax',     fy_max, ...
+                    'muMax',     mu_max, ...
+                    'cFyAlpha',  c_fy_alpha ...
+                    );
             end
 
-            app.clear_axes(app.UIAxes_CK_1); hold(app.UIAxes_CK_1, 'on');
-            app.clear_axes(app.UIAxes_CK_2); hold(app.UIAxes_CK_2, 'on');
-            app.clear_axes(app.UIAxes_CK_3); hold(app.UIAxes_CK_3, 'on');
-
-            for k = 1:n
-                orig_idx = lateral_idx(k);
-                is_used = app.SweepIsUsed(orig_idx);
-                if ~is_used && hide_unused
-                    continue
-                end
-
-                if is_used
-                    col = [0.78 0.13 0.16];
-                    ms = 6;
-                else
-                    col = [0.5 0.5 0.5];
-                    ms = 4;
-                end
-
-                plot(app.UIAxes_CK_1, fz_vec(k), fy_max_vec(k), 'o', 'Color', col, 'MarkerFaceColor', col, 'MarkerSize', ms);
-                plot(app.UIAxes_CK_2, fz_vec(k), mu_max_vec(k), 'o', 'Color', col, 'MarkerFaceColor', col, 'MarkerSize', ms);
-                plot(app.UIAxes_CK_3, fz_vec(k), c_fy_alpha_vec(k), 'o', 'Color', col, 'MarkerFaceColor', col, 'MarkerSize', ms);
-            end
-
-            title(app.UIAxes_CK_1, 'Max. Seitenkraft');
-            xlabel(app.UIAxes_CK_1, 'FZ [N]'); ylabel(app.UIAxes_CK_1, 'FY_{max} [N]');
-            title(app.UIAxes_CK_2, 'Max. Reibwert');
-            xlabel(app.UIAxes_CK_2, 'FZ [N]'); ylabel(app.UIAxes_CK_2, '\mu_{y,max} [-]', 'Interpreter', 'tex');
-            title(app.UIAxes_CK_3, 'Cornering-Stiffness');
-            xlabel(app.UIAxes_CK_3, 'FZ [N]'); ylabel(app.UIAxes_CK_3, 'C_{Fy,\alpha} [N/deg]', 'Interpreter', 'tex');
-
-            hold(app.UIAxes_CK_1, 'off'); hold(app.UIAxes_CK_2, 'off'); hold(app.UIAxes_CK_3, 'off');
+            %% Ausgabe
+            payload = struct('sweeps', {sweeps_payload});
+            app.Cornering_kennwerte_HTML.Data = payload;
         end
 
-        function plot_camber_sweep(app)
-            % PLOT_CAMBER_SWEEP Visualisiert den Einfluss des Sturzwinkels gamma
-            % auf die Lateral-Kennlinien. Farbcodierung nach gamma.
+        function plot_manual_selection_html(app)
+            % PLOT_MANUAL_SELECTION_HTML Baut den Datenvertrag fuer das ECharts-
+            % Manual-Selection-Widget (ManualSelectionHTML) aus ALLEN Sweeps und
+            % schreibt ihn nach app.ManualSelectionHTML.Data. Ersetzt die reine
+            % MATLAB-Plot-Funktion plot_manual_selection() (UIAxes_MS_1/2/3) fuer
+            % die Darstellung. Kanaele werden bereits hier vollstaendig geglaettet
+            % uebergeben (app.smooth_channel) -- das HTML-Widget macht kein
+            % Smoothing selbst. Toggle des manuellen Ausschlusses und der
+            % Gelb-Markierung laufen ueber Events aus JS zurueck nach MATLAB
+            % (siehe HTMLEventReceivedFcn-Kommentar im HTML-Header).
             %
-            % Autor: Lambo || Datum: 07.07.26
-
-            methods = [app.sweep.TestMethod];
-            is_lateral = (methods == "Lateral");
-            lateral_idx = find(is_lateral);
-            lateral_sweeps = app.sweep(lateral_idx);
-
-            if isempty(lateral_sweeps)
-                return
-            end
-
-            if isempty(app.SweepIsUsed)
-                app.SweepIsUsed = true(size(app.sweep));
-            end
-
-            hide_unused = app.HideUnusedCheckBox.Value;
-
-            gamma_levels = arrayfun(@(s) median(s.gamma, 'omitnan'), lateral_sweeps);
-            fz_levels = arrayfun(@(s) median(s.Fz, 'omitnan'), lateral_sweeps);
-            cmap = turbo(numel(lateral_sweeps));
-
-            app.clear_axes(app.UIAxes_Cam_1); hold(app.UIAxes_Cam_1, 'on');
-            app.clear_axes(app.UIAxes_Cam_2); hold(app.UIAxes_Cam_2, 'on');
-            app.clear_axes(app.UIAxes_Cam_3); hold(app.UIAxes_Cam_3, 'on');
-
-            for k = 1:numel(lateral_sweeps)
-                orig_idx = lateral_idx(k);
-                is_used = app.SweepIsUsed(orig_idx);
-                if ~is_used && hide_unused
-                    continue
-                end
-
-                s = lateral_sweeps(k);
-                sa_deg = rad2deg(s.alpha);
-                gamma_deg = rad2deg(gamma_levels(k));
-
-                fy_plot = app.smooth_channel(s, 'Fy', s.Fy);
-                mz_plot = app.smooth_channel(s, 'Mz', s.Mz);
-                mx_plot = app.smooth_channel(s, 'Mx', s.Mx);
-
-                if is_used
-                    col = cmap(k, :);
-                    lw = 1.0;
-                    dname = sprintf('\\gamma \\approx %.1f^\\circ, FZ \\approx %.0f N', gamma_deg, fz_levels(k));
-                else
-                    col = [0.5 0.5 0.5];
-                    lw = 0.5;
-                    dname = sprintf('\\gamma \\approx %.1f^\\circ (gefiltert)', gamma_deg);
-                end
-
-                plot(app.UIAxes_Cam_1, sa_deg, fy_plot, 'Color', col, 'LineWidth', lw, 'DisplayName', dname);
-                plot(app.UIAxes_Cam_2, sa_deg, mz_plot, 'Color', col, 'LineWidth', lw, 'HandleVisibility', 'off');
-                plot(app.UIAxes_Cam_3, sa_deg, mx_plot, 'Color', col, 'LineWidth', lw, 'HandleVisibility', 'off');
-            end
-
-            title(app.UIAxes_Cam_1, 'Seitenkraft / Schraeglaufwinkel');
-            xlabel(app.UIAxes_Cam_1, 'SA [deg]'); ylabel(app.UIAxes_Cam_1, 'FY [N]');
-            title(app.UIAxes_Cam_2, 'Rueckstellmoment / Schraeglaufwinkel');
-            xlabel(app.UIAxes_Cam_2, 'SA [deg]'); ylabel(app.UIAxes_Cam_2, 'MZ [Nm]');
-            title(app.UIAxes_Cam_3, 'Sturzmoment / Schraeglaufwinkel');
-            xlabel(app.UIAxes_Cam_3, 'SA [deg]'); ylabel(app.UIAxes_Cam_3, 'MX [Nm]');
-
-            hold(app.UIAxes_Cam_1, 'off'); hold(app.UIAxes_Cam_2, 'off'); hold(app.UIAxes_Cam_3, 'off');
-            legend(app.UIAxes_Cam_1, 'show', 'Location', 'best', 'Interpreter', 'tex');
-        end
-
-        function plot_drive_brake(app)
-            % PLOT_DRIVE_BRAKE Longitudinal-Kennlinien: FX, MZ, FY ueber
-            % Laengsschlupf kappa. Nur Longitudinal-Sweeps.
+            % Zweck: Manual-Selection-Payload fuer uihtml-Sweep-Viewer
+            % Abhaengigkeiten: app.sweep, app.FilterIsUsed, app.ManualExclude,
+            %                  app.ShowFilteredYellowCheckBox, app.smooth_channel(),
+            %                  app.ManualSelectionHTML
+            % Autor: Lambo || Datum: 08.07.26
             %
-            % Autor: Lambo || Datum: 07.07.26
+            % Changelog:
+            %   08.07.26 - Lambo - Initiale Version (ersetzt plot_manual_selection)
 
-            methods = [app.sweep.TestMethod];
-            is_long = (methods == "Longitudinal");
-            long_idx = find(is_long);
-            long_sweeps = app.sweep(long_idx);
-
-            if isempty(long_sweeps)
-                return
-            end
-
-            if isempty(app.SweepIsUsed)
-                app.SweepIsUsed = true(size(app.sweep));
-            end
-
-            hide_unused = app.HideUnusedCheckBox.Value;
-
-            fz_levels = arrayfun(@(s) median(s.Fz, 'omitnan'), long_sweeps);
-            cmap = turbo(numel(long_sweeps));
-
-            app.clear_axes(app.UIAxes_DB_1); hold(app.UIAxes_DB_1, 'on');
-            app.clear_axes(app.UIAxes_DB_2); hold(app.UIAxes_DB_2, 'on');
-            app.clear_axes(app.UIAxes_DB_3); hold(app.UIAxes_DB_3, 'on');
-
-            for k = 1:numel(long_sweeps)
-                orig_idx = long_idx(k);
-                is_used = app.SweepIsUsed(orig_idx);
-                if ~is_used && hide_unused
-                    continue
-                end
-
-                s = long_sweeps(k);
-                kappa_plot = s.kappa;
-
-                fx_plot = app.smooth_channel(s, 'Fx', s.Fx);
-                mz_plot = app.smooth_channel(s, 'Mz', s.Mz);
-                fy_plot = app.smooth_channel(s, 'Fy', s.Fy);
-
-                if is_used
-                    col = cmap(k, :);
-                    lw = 1.0;
-                    dname = sprintf('FZ \\approx %.0f N', fz_levels(k));
-                else
-                    col = [0.5 0.5 0.5];
-                    lw = 0.5;
-                    dname = sprintf('FZ \\approx %.0f N (gefiltert)', fz_levels(k));
-                end
-
-                plot(app.UIAxes_DB_1, kappa_plot, fx_plot, 'Color', col, 'LineWidth', lw, 'DisplayName', dname);
-                plot(app.UIAxes_DB_2, kappa_plot, mz_plot, 'Color', col, 'LineWidth', lw, 'HandleVisibility', 'off');
-                plot(app.UIAxes_DB_3, kappa_plot, fy_plot, 'Color', col, 'LineWidth', lw, 'HandleVisibility', 'off');
-            end
-
-            title(app.UIAxes_DB_1, 'Laengskraft / Laengsschlupf');
-            xlabel(app.UIAxes_DB_1, '\kappa [-]'); ylabel(app.UIAxes_DB_1, 'FX [N]');
-            title(app.UIAxes_DB_2, 'Rueckstellmoment / Laengsschlupf');
-            xlabel(app.UIAxes_DB_2, '\kappa [-]'); ylabel(app.UIAxes_DB_2, 'MZ [Nm]');
-            title(app.UIAxes_DB_3, 'Seitenkraft / Laengsschlupf');
-            xlabel(app.UIAxes_DB_3, '\kappa [-]'); ylabel(app.UIAxes_DB_3, 'FY [N]');
-
-            hold(app.UIAxes_DB_1, 'off'); hold(app.UIAxes_DB_2, 'off'); hold(app.UIAxes_DB_3, 'off');
-            legend(app.UIAxes_DB_1, 'show', 'Location', 'best', 'Interpreter', 'tex');
-        end
-
-        function plot_combined_slip(app)
-            % PLOT_COMBINED_SLIP Visualisiert Combined-Slip-Sweeps: FX ueber
-            % kappa und FY ueber SA.
-            %
-            % Autor: Lambo || Datum: 07.07.26
-
-            methods = [app.sweep.TestMethod];
-            is_comb = (methods == "Combined");
-            comb_idx = find(is_comb);
-            comb_sweeps = app.sweep(comb_idx);
-
-            if isempty(comb_sweeps)
-                return
-            end
-
-            if isempty(app.SweepIsUsed)
-                app.SweepIsUsed = true(size(app.sweep));
-            end
-
-            hide_unused = app.HideUnusedCheckBox.Value;
-
-            fz_levels = arrayfun(@(s) median(s.Fz, 'omitnan'), comb_sweeps);
-            cmap = turbo(numel(comb_sweeps));
-
-            app.clear_axes(app.UIAxes_CS_1); hold(app.UIAxes_CS_1, 'on');
-            app.clear_axes(app.UIAxes_CS_2); hold(app.UIAxes_CS_2, 'on');
-
-            for k = 1:numel(comb_sweeps)
-                orig_idx = comb_idx(k);
-                is_used = app.SweepIsUsed(orig_idx);
-                if ~is_used && hide_unused
-                    continue
-                end
-
-                s = comb_sweeps(k);
-                sa_deg = rad2deg(s.alpha);
-                kappa_plot = s.kappa;
-
-                fx_plot = app.smooth_channel(s, 'Fx', s.Fx);
-                fy_plot = app.smooth_channel(s, 'Fy', s.Fy);
-
-                if is_used
-                    col = cmap(k, :);
-                    lw = 1.0;
-                    dname = sprintf('FZ \\approx %.0f N', fz_levels(k));
-                else
-                    col = [0.5 0.5 0.5];
-                    lw = 0.5;
-                    dname = sprintf('FZ \\approx %.0f N (gefiltert)', fz_levels(k));
-                end
-
-                plot(app.UIAxes_CS_1, kappa_plot, fx_plot, 'Color', col, 'LineWidth', lw, 'DisplayName', dname);
-                plot(app.UIAxes_CS_2, sa_deg, fy_plot, 'Color', col, 'LineWidth', lw, 'HandleVisibility', 'off');
-            end
-
-            title(app.UIAxes_CS_1, 'Laengskraft / Laengsschlupf (Combined)');
-            xlabel(app.UIAxes_CS_1, '\kappa [-]'); ylabel(app.UIAxes_CS_1, 'FX [N]');
-            title(app.UIAxes_CS_2, 'Seitenkraft / Schraeglaufwinkel (Combined)');
-            xlabel(app.UIAxes_CS_2, 'SA [deg]'); ylabel(app.UIAxes_CS_2, 'FY [N]');
-
-            hold(app.UIAxes_CS_1, 'off'); hold(app.UIAxes_CS_2, 'off');
-            legend(app.UIAxes_CS_1, 'show', 'Location', 'best', 'Interpreter', 'tex');
-        end
-
-        function plot_cold_to_hot(app)
-            % PLOT_COLD_TO_HOT Visualisiert Temperaturabhaengigkeit der
-            % Lateral-Kennwerte ueber der mittleren Reifentemperatur TtreadC.
-            %
-            % Autor: Lambo || Datum: 07.07.26
-
-            ZERO_BAND_DEG = 1.5; % [deg]
-
-            methods = [app.sweep.TestMethod];
-            is_lateral = (methods == "Lateral");
-            lateral_idx = find(is_lateral);
-            lateral_sweeps = app.sweep(lateral_idx);
-
-            if isempty(lateral_sweeps)
-                return
-            end
-
-            if isempty(app.SweepIsUsed)
-                app.SweepIsUsed = true(size(app.sweep));
-            end
-
-            hide_unused = app.HideUnusedCheckBox.Value;
-
-            n = numel(lateral_sweeps);
-            temp_vec = zeros(n, 1);
-            mu_max_vec = zeros(n, 1);
-            c_fy_alpha_vec = zeros(n, 1);
-
-            for k = 1:n
-                orig_idx = lateral_idx(k);
-                s = lateral_sweeps(k);
-                temp_vec(k) = median(s.TtreadC, 'omitnan');
-
-                if ~app.SweepIsUsed(orig_idx) && hide_unused
-                    continue
-                end
-
-                sa_deg = rad2deg(s.alpha);
-                fy_plot = app.smooth_channel(s, 'Fy', s.Fy);
-                fz_plot = app.smooth_channel(s, 'Fz', s.Fz);
-
-                mu_max_vec(k) = max(abs(fy_plot ./ abs(fz_plot)), [], 'omitnan');
-
-                idx_zero = abs(sa_deg) <= ZERO_BAND_DEG;
-                if sum(idx_zero) >= 3
-                    p = polyfit(sa_deg(idx_zero), fy_plot(idx_zero), 1);
-                    c_fy_alpha_vec(k) = p(1);
-                else
-                    c_fy_alpha_vec(k) = NaN;
-                end
-            end
-
-            app.clear_axes(app.UIAxes_CH_1); hold(app.UIAxes_CH_1, 'on');
-            app.clear_axes(app.UIAxes_CH_2); hold(app.UIAxes_CH_2, 'on');
-
-            for k = 1:n
-                orig_idx = lateral_idx(k);
-                is_used = app.SweepIsUsed(orig_idx);
-                if ~is_used && hide_unused
-                    continue
-                end
-
-                if is_used
-                    col = [0.78 0.13 0.16];
-                    ms = 6;
-                else
-                    col = [0.5 0.5 0.5];
-                    ms = 4;
-                end
-
-                plot(app.UIAxes_CH_1, temp_vec(k), mu_max_vec(k), 'o', 'Color', col, 'MarkerFaceColor', col, 'MarkerSize', ms);
-                plot(app.UIAxes_CH_2, temp_vec(k), c_fy_alpha_vec(k), 'o', 'Color', col, 'MarkerFaceColor', col, 'MarkerSize', ms);
-            end
-
-            title(app.UIAxes_CH_1, 'Max. Reibwert ueber Temperatur');
-            xlabel(app.UIAxes_CH_1, 'T_{tread,C} [°C]'); ylabel(app.UIAxes_CH_1, '\mu_{y,max} [-]', 'Interpreter', 'tex');
-            title(app.UIAxes_CH_2, 'Cornering-Stiffness ueber Temperatur');
-            xlabel(app.UIAxes_CH_2, 'T_{tread,C} [°C]'); ylabel(app.UIAxes_CH_2, 'C_{Fy,\alpha} [N/deg]', 'Interpreter', 'tex');
-
-            hold(app.UIAxes_CH_1, 'off'); hold(app.UIAxes_CH_2, 'off');
-        end
-
-        function plot_transient(app)
-            % PLOT_TRANSIENT Zeigt Zeitverlaeufe von Schraeglaufwinkel und
-            % Seitenkraft fuer alle Sweeps. Farbcodierung nach TestMethod.
-            %
-            % Autor: Lambo || Datum: 07.07.26
+            % Konfiguration
+            channel_groups_def = { ...
+                struct('title', 'Kraefte',       'ylabel', 'Kraft [N]',        'channels', {{'Fx', 'Fy', 'Fz'}}), ...
+                struct('title', 'Momente',       'ylabel', 'Moment [Nm]',      'channels', {{'Mx', 'My', 'Mz'}}), ...
+                struct('title', 'Temperaturen',  'ylabel', 'Temperatur [°C]',  'channels', {{'TtreadI', 'TtreadC', 'TtreadO'}}) ...
+                };
+            all_channels = [channel_groups_def{1}.channels, channel_groups_def{2}.channels, channel_groups_def{3}.channels];
 
             if isempty(app.sweep)
                 return
             end
-
-            if isempty(app.SweepIsUsed)
-                app.SweepIsUsed = true(size(app.sweep));
-            end
-
-            hide_unused = app.HideUnusedCheckBox.Value;
-
-            method_colors = containers.Map( ...
-                {'Lateral', 'Longitudinal', 'Combined', 'Undefined'}, ...
-                {[0.78 0.13 0.16], [0.20 0.60 0.90], [0.90 0.70 0.10], [0.50 0.50 0.50]});
-
-            app.clear_axes(app.UIAxes_TR_1); hold(app.UIAxes_TR_1, 'on');
-            app.clear_axes(app.UIAxes_TR_2); hold(app.UIAxes_TR_2, 'on');
-
-            for k = 1:numel(app.sweep)
-                is_used = app.SweepIsUsed(k);
-                if ~is_used && hide_unused
-                    continue
-                end
-
-                s = app.sweep(k);
-                sa_deg = rad2deg(s.alpha);
-                fy_plot = app.smooth_channel(s, 'Fy', s.Fy);
-                method_str = char(s.TestMethod);
-
-                if isKey(method_colors, method_str)
-                    col = method_colors(method_str);
-                else
-                    col = [0.5 0.5 0.5];
-                end
-                if ~is_used
-                    col = [0.4 0.4 0.4];
-                end
-
-                lw = 1.0 * is_used + 0.5 * ~is_used;
-                plot(app.UIAxes_TR_1, s.et, sa_deg, 'Color', col, 'LineWidth', lw, 'HandleVisibility', 'off');
-                plot(app.UIAxes_TR_2, s.et, fy_plot, 'Color', col, 'LineWidth', lw, 'HandleVisibility', 'off');
-
-                if k > 1
-                    xline(app.UIAxes_TR_1, s.et(1), '--', 'Color', [0.3 0.3 0.3], 'HandleVisibility', 'off');
-                    xline(app.UIAxes_TR_2, s.et(1), '--', 'Color', [0.3 0.3 0.3], 'HandleVisibility', 'off');
-                end
-            end
-
-            method_names = keys(method_colors);
-            for m = 1:numel(method_names)
-                plot(app.UIAxes_TR_1, NaN, NaN, 'Color', method_colors(method_names{m}), 'DisplayName', method_names{m});
-            end
-
-            title(app.UIAxes_TR_1, 'Schraeglaufwinkel-Zeitverlauf');
-            xlabel(app.UIAxes_TR_1, 'ET [s]'); ylabel(app.UIAxes_TR_1, 'SA [deg]');
-            title(app.UIAxes_TR_2, 'Seitenkraft-Zeitverlauf');
-            xlabel(app.UIAxes_TR_2, 'ET [s]'); ylabel(app.UIAxes_TR_2, 'FY [N]');
-
-            hold(app.UIAxes_TR_1, 'off'); hold(app.UIAxes_TR_2, 'off');
-            legend(app.UIAxes_TR_1, 'show', 'Location', 'best');
-        end
-
-        function plot_speed_vergleich(app)
-            % PLOT_SPEED_VERGLEICH Vergleicht charakteristische Kennwerte
-            % ueber der Fahrgeschwindigkeit V. Nur Lateral-Sweeps.
-            %
-            % Autor: Lambo || Datum: 07.07.26
-
-            ZERO_BAND_DEG = 1.5; % [deg]
-
-            methods = [app.sweep.TestMethod];
-            is_lateral = (methods == "Lateral");
-            lateral_idx = find(is_lateral);
-            lateral_sweeps = app.sweep(lateral_idx);
-
-            if isempty(lateral_sweeps)
-                return
-            end
-
-            if isempty(app.SweepIsUsed)
-                app.SweepIsUsed = true(size(app.sweep));
-            end
-
-            hide_unused = app.HideUnusedCheckBox.Value;
-
-            n = numel(lateral_sweeps);
-            v_vec = zeros(n, 1);
-            fy_max_vec = zeros(n, 1);
-            mu_max_vec = zeros(n, 1);
-            c_fy_alpha_vec = zeros(n, 1);
-
-            for k = 1:n
-                orig_idx = lateral_idx(k);
-                s = lateral_sweeps(k);
-                v_vec(k) = median(s.V, 'omitnan');
-
-                if ~app.SweepIsUsed(orig_idx) && hide_unused
-                    continue
-                end
-
-                sa_deg = rad2deg(s.alpha);
-                fy_plot = app.smooth_channel(s, 'Fy', s.Fy);
-                fz_plot = app.smooth_channel(s, 'Fz', s.Fz);
-
-                mu_max_vec(k) = max(abs(fy_plot ./ abs(fz_plot)), [], 'omitnan');
-                fy_max_vec(k) = max(abs(fy_plot), [], 'omitnan');
-
-                idx_zero = abs(sa_deg) <= ZERO_BAND_DEG;
-                if sum(idx_zero) >= 3
-                    p = polyfit(sa_deg(idx_zero), fy_plot(idx_zero), 1);
-                    c_fy_alpha_vec(k) = p(1);
-                else
-                    c_fy_alpha_vec(k) = NaN;
-                end
-            end
-
-            app.clear_axes(app.UIAxes_SV_1); hold(app.UIAxes_SV_1, 'on');
-            app.clear_axes(app.UIAxes_SV_2); hold(app.UIAxes_SV_2, 'on');
-            app.clear_axes(app.UIAxes_SV_3); hold(app.UIAxes_SV_3, 'on');
-
-            for k = 1:n
-                orig_idx = lateral_idx(k);
-                is_used = app.SweepIsUsed(orig_idx);
-                if ~is_used && hide_unused
-                    continue
-                end
-
-                if is_used
-                    col = [0.78 0.13 0.16];
-                    ms = 6;
-                else
-                    col = [0.5 0.5 0.5];
-                    ms = 4;
-                end
-
-                plot(app.UIAxes_SV_1, v_vec(k), fy_max_vec(k), 'o', 'Color', col, 'MarkerFaceColor', col, 'MarkerSize', ms);
-                plot(app.UIAxes_SV_2, v_vec(k), mu_max_vec(k), 'o', 'Color', col, 'MarkerFaceColor', col, 'MarkerSize', ms);
-                plot(app.UIAxes_SV_3, v_vec(k), c_fy_alpha_vec(k), 'o', 'Color', col, 'MarkerFaceColor', col, 'MarkerSize', ms);
-            end
-
-            title(app.UIAxes_SV_1, 'Max. Seitenkraft ueber V');
-            xlabel(app.UIAxes_SV_1, 'V [m/s]'); ylabel(app.UIAxes_SV_1, 'FY_{max} [N]');
-            title(app.UIAxes_SV_2, 'Max. Reibwert ueber V');
-            xlabel(app.UIAxes_SV_2, 'V [m/s]'); ylabel(app.UIAxes_SV_2, '\mu_{y,max} [-]', 'Interpreter', 'tex');
-            title(app.UIAxes_SV_3, 'Cornering-Stiffness ueber V');
-            xlabel(app.UIAxes_SV_3, 'V [m/s]'); ylabel(app.UIAxes_SV_3, 'C_{Fy,\alpha} [N/deg]', 'Interpreter', 'tex');
-
-            hold(app.UIAxes_SV_1, 'off'); hold(app.UIAxes_SV_2, 'off'); hold(app.UIAxes_SV_3, 'off');
-        end
-
-        function plot_rohdaten_explorer(app)
-            % PLOT_ROHDATEN_EXPLORER Zeigt Rohdaten-Zeitverlaeufe aller Sweeps
-            % fuer FZ und SA. Farbcodierung nach TestMethod.
-            %
-            % Autor: Lambo || Datum: 07.07.26
-
-            if isempty(app.sweep)
-                return
-            end
-
-            if isempty(app.SweepIsUsed)
-                app.SweepIsUsed = true(size(app.sweep));
-            end
-
-            hide_unused = app.HideUnusedCheckBox.Value;
-
-            method_colors = containers.Map( ...
-                {'Lateral', 'Longitudinal', 'Combined', 'Undefined'}, ...
-                {[0.78 0.13 0.16], [0.20 0.60 0.90], [0.90 0.70 0.10], [0.50 0.50 0.50]});
-
-            app.clear_axes(app.UIAxes_RE_1); hold(app.UIAxes_RE_1, 'on');
-            app.clear_axes(app.UIAxes_RE_2); hold(app.UIAxes_RE_2, 'on');
-
-            for k = 1:numel(app.sweep)
-                is_used = app.SweepIsUsed(k);
-                if ~is_used && hide_unused
-                    continue
-                end
-
-                s = app.sweep(k);
-                sa_deg = rad2deg(s.alpha);
-                fz_plot = s.Fz;
-                method_str = char(s.TestMethod);
-
-                if isKey(method_colors, method_str)
-                    col = method_colors(method_str);
-                else
-                    col = [0.5 0.5 0.5];
-                end
-                if ~is_used
-                    col = [0.4 0.4 0.4];
-                end
-
-                lw = 1.0 * is_used + 0.5 * ~is_used;
-                plot(app.UIAxes_RE_1, s.et, fz_plot, 'Color', col, 'LineWidth', lw, 'HandleVisibility', 'off');
-                plot(app.UIAxes_RE_2, s.et, sa_deg, 'Color', col, 'LineWidth', lw, 'HandleVisibility', 'off');
-
-                if k > 1
-                    xline(app.UIAxes_RE_1, s.et(1), '--', 'Color', [0.3 0.3 0.3], 'HandleVisibility', 'off');
-                    xline(app.UIAxes_RE_2, s.et(1), '--', 'Color', [0.3 0.3 0.3], 'HandleVisibility', 'off');
-                end
-            end
-
-            method_names = keys(method_colors);
-            for m = 1:numel(method_names)
-                plot(app.UIAxes_RE_1, NaN, NaN, 'Color', method_colors(method_names{m}), 'DisplayName', method_names{m});
-            end
-
-            title(app.UIAxes_RE_1, 'Normalkraft-Zeitverlauf');
-            xlabel(app.UIAxes_RE_1, 'ET [s]'); ylabel(app.UIAxes_RE_1, 'FZ [N]');
-            title(app.UIAxes_RE_2, 'Schraeglaufwinkel-Zeitverlauf');
-            xlabel(app.UIAxes_RE_2, 'ET [s]'); ylabel(app.UIAxes_RE_2, 'SA [deg]');
-
-            hold(app.UIAxes_RE_1, 'off'); hold(app.UIAxes_RE_2, 'off');
-            legend(app.UIAxes_RE_1, 'show', 'Location', 'best');
-        end
-
-        function plot_manual_selection(app)
-            % PLOT_MANUAL_SELECTION Zeigt alle Sweeps ueber der Zeit in drei
-            % Kanal-Gruppen (Kraefte / Momente / Temperaturen). Ein Klick in
-            % einen der drei Plots schaltet den manuellen Ausschluss
-            % (app.ManualExclude) des betroffenen Sweeps um. Ueber den Filter
-            % ausgeschlossene Sweeps (~app.FilterIsUsed) und manuell
-            % ausgeschlossene Sweeps werden als rot-transparenter Hintergrund
-            % markiert. Ueber die Checkbox ShowFilteredYellowCheckBox lassen
-            % sich reine Filter-Ausschluesse zusaetzlich gelb hervorheben, um
-            % sie von manuellen Ausschluessen zu unterscheiden.
-            %
-            % Autor: Lambo || Datum: 07.07.26
-
-            if isempty(app.sweep)
+            if isempty(app.Manual_selection_html) || ~isvalid(app.Manual_selection_html)
                 return
             end
             if isempty(app.FilterIsUsed)
@@ -1115,269 +675,405 @@ classdef Tire_Filter_App_mat < matlab.apps.AppBase
                 app.ManualExclude = false(size(app.sweep));
             end
 
-            show_filtered_yellow = app.ShowFilteredYellowCheckBox.Value;
+            % Vorberechnungen
+            n = numel(app.sweep); % [-] Anzahl aller Sweeps (kein TestMethod-Filter)
 
-            axs = [app.UIAxes_MS_1, app.UIAxes_MS_2, app.UIAxes_MS_3];
-            channel_groups = {{'Fx', 'Fy', 'Fz'}, {'Mx', 'My', 'Mz'}, {'TtreadI', 'TtreadC', 'TtreadO'}};
-            line_colors = [0.85 0.20 0.20; 0.20 0.55 0.90; 0.20 0.75 0.35];
-            titles_ms = {'Kraefte', 'Momente', 'Temperaturen'};
-            ylabels_ms = {'Kraft [N]', 'Moment [Nm]', 'Temperatur [°C]'};
+            % Berechnung
+            sweeps_payload = cell(1, n);
+            for k = 1:n
+                s = app.sweep(k);
 
-            for a = axs
-                app.clear_axes(a); hold(a, 'on');
-            end
-
-            % Linienplots + Trennlinien je Kanal-Gruppe
-            for g = 1:3
-                a = axs(g);
-                chans = channel_groups{g};
-
-                for c = 1:numel(chans)
-                    for k = 1:numel(app.sweep)
-                        s = app.sweep(k);
-                        y_raw = s.(chans{c});
-                        y_plot = app.smooth_channel(s, chans{c}, y_raw);
-                        plot(a, s.et, y_plot, 'Color', line_colors(c, :), 'LineWidth', 0.9, 'HitTest', 'off', 'HandleVisibility', 'off');
-                    end
-                    % Legendeneintrag (einmalig, ausserhalb der Sweep-Schleife)
-                    plot(a, NaN, NaN, 'Color', line_colors(c, :), 'DisplayName', chans{c}, 'HitTest', 'off');
+                chans_struct = struct();
+                for c = 1:numel(all_channels)
+                    ch_name = all_channels{c};
+                    y_raw = s.(ch_name);
+                    y_smooth = app.smooth_channel(s, ch_name, y_raw);
+                    chans_struct.(ch_name) = y_smooth(:)';
                 end
 
-                for k = 2:numel(app.sweep)
-                    xline(a, app.sweep(k).et(1), '--', 'Color', [0.3 0.3 0.3], 'HandleVisibility', 'off');
-                end
-
-                title(a, titles_ms{g});
-                xlabel(a, 'ET [s]'); ylabel(a, ylabels_ms{g});
-                legend(a, 'show', 'Location', 'best');
-
-                % Klick auf die Achse aktiviert die Sweep-Auswahl
-                a.ButtonDownFcn = createCallbackFcn(app, @ManualSelectAxesClicked, true);
+                sweeps_payload{k} = struct( ...
+                    'id',            k - 1, ...                          % 0-basiert fuer JS
+                    'origIndex',     k, ...                               % 1-basiert, Rueckweg nach MATLAB
+                    'filterUsed',    logical(app.FilterIsUsed(k)), ...
+                    'manualExclude', logical(app.ManualExclude(k)), ...
+                    'et',            s.et(:)', ...
+                    'channels',      chans_struct ...
+                    );
             end
 
-            % Ausschluss-Hintergrund je Sweep (hinter die Linien gelegt)
-            for g = 1:3
-                a = axs(g);
-                yl = ylim(a);
+            % % Ausgabe
+            % payload = struct( ...
+            %     'showFilteredYellow', logical(app.ShowFilteredYellowCheckBox.Value), ...
+            %     'channelGroups',      {channel_groups_def}, ...
+            %     'sweeps',             {sweeps_payload} );
 
-                for k = 1:numel(app.sweep)
-                    is_manual = app.ManualExclude(k);
-                    is_filter_excluded = ~app.FilterIsUsed(k);
-
-                    if is_manual
-                        face_col = [0.85 0.10 0.10];
-                    elseif is_filter_excluded
-                        if show_filtered_yellow
-                            face_col = [0.95 0.85 0.15];
-                        else
-                            face_col = [0.85 0.10 0.10];
-                        end
-                    else
-                        continue
-                    end
-
-                    s = app.sweep(k);
-                    t0 = s.et(1); t1 = s.et(end);
-
-                    p = patch(a, [t0 t1 t1 t0], [yl(1) yl(1) yl(2) yl(2)], face_col, ...
-                        'FaceAlpha', 0.28, 'EdgeColor', 'none', ...
-                        'HitTest', 'off', 'PickableParts', 'none', 'HandleVisibility', 'off');
-                    uistack(p, 'bottom');
-                end
-            end
-
-            for a = axs
-                hold(a, 'off');
-            end
-
-            % X-Achsen aller drei UIAxes synchronisieren (Zoom & Pan)
-            axs = [app.UIAxes_MS_1, app.UIAxes_MS_2, app.UIAxes_MS_3];
-            linkaxes(axs, 'x');
-
+            % Ausgabe
+            payload = struct( ...
+                'channelGroups',      {channel_groups_def}, ...
+                'sweeps',             {sweeps_payload} );
+            
+            app.Manual_selection_html.Data = payload;
         end
 
-        function updateDynamicYLimits(~, targetAxes)
-            xLim = targetAxes.XLim;
-            lines = findobj(targetAxes, 'Type', 'line'); % Sucht nur echte Datenlinien (ignoriert Patches)
-
-            yMin = Inf;
-            yMax = -Inf;
-
-            for j = 1:length(lines)
-                xData = lines(j).XData;
-                yData = lines(j).YData;
-
-                % Nur Datenpunkte innerhalb des aktuellen X-Sichtfelds
-                inView = (xData >= xLim(1)) & (xData <= xLim(2));
-                if any(inView)
-                    yMin = min(yMin, min(yData(inView)));
-                    yMax = max(yMax, max(yData(inView)));
-                end
-            end
-
-            % Wenn gueltige Liniendaten im Sichtfeld sind, Achse neu skalieren (+20% Range)
-            if isfinite(yMin) && isfinite(yMax)
-                yRange = yMax - yMin;
-                if yRange == 0, yRange = 1; end
-                puffer = 0.10 * yRange; % 10% Puffer oben und unten
-
-                targetAxes.YLim = [yMin - puffer, yMax + puffer];
-            end
-        end
-
-        %% Achsen-Hilfsfunktion (Bugfix: alte Linie blieb nach Filtern sichtbar)
-
-        function clear_axes(~, ax)
-            % CLEAR_AXES Entfernt zuverlaessig ALLE Grafikobjekte (Linien,
-            % Patches, Text-Annotationen) aus einer Achse - unabhaengig von
-            % deren HandleVisibility-Eigenschaft.
+        function plot_test_preprocessing_html(app)
+            % PLOT_TEST_PREPROCESSING_HTML Baut den Datenvertrag fuer das ECharts-
+            % Test-Preprocessing-Widget (PreprocessingHTML) aus ALLEN Sweeps und
+            % schreibt ihn nach app.PreprocessingHTML.Data. Ersetzt die reine
+            % MATLAB-Plot-Funktion plot_test_preprocessing() (UIAxes_Sweep/
+            % UIAxes_Mu/UIAxes_Pneu) fuer die Darstellung. mu_y und Pneumatic
+            % Trail werden NICHT mehr hier berechnet, sondern client-seitig aus
+            % fy/fz/mz/alphaDeg (reine Division) -- exakt wie im MATLAB-Code,
+            % aber ohne doppelte Berechnung. hide_unused-Filterung entfaellt
+            % hier (wandert in den Client-Toggle); alle Sweeps werden mit 'used'
+            % markiert uebergeben.
             %
-            % HINTERGRUND / BUGFIX:
-            % cla(ax) loescht laut MATLAB-Dokumentation nur Objekte mit
-            % HandleVisibility = 'on'. In dieser App werden praktisch alle
-            % plot()/patch()-Aufrufe bewusst mit 'HandleVisibility','off'
-            % erstellt (damit sie nicht einzeln in der Legende auftauchen).
-            % Genau diese Objekte wurden von cla() daher NICHT entfernt -
-            % nach dem Anwenden eines Filters/Smoothings blieb die alte,
-            % ungefilterte Linie unsichtbar fuer die Legende, aber weiterhin
-            % sichtbar im Plot, und die neue Linie wurde einfach darueber
-            % gezeichnet. findall() (im Gegensatz zu findobj()) ignoriert
-            % HandleVisibility und findet wirklich alle Kind-Objekte, die
-            % dann explizit geloescht werden.
+            % Zweck: Test-Preprocessing-Payload fuer uihtml-Sweep-Viewer
+            % Abhaengigkeiten: app.sweep, app.SweepIsUsed, app.smooth_channel(),
+            %                  app.PreprocessingHTML
+            % Autor: Lambo || Datum: 09.07.26
+            %
+            % Changelog:
+            %   09.07.26 - Lambo - Initiale Version (ersetzt plot_test_preprocessing)
+
+            % Konfiguration
+            FY_THRESHOLD = 50; % [N] Mindest-FY fuer Pneumatic-Trail-Berechnung (Startwert)
+            method_colors = struct( ...
+                'Lateral',      '#C72129', ...
+                'Longitudinal', '#3399E6', ...
+                'Combined',     '#E6B31A', ...
+                'Undefined',    '#808080');
+
+            if isempty(app.sweep)
+                return
+            end
+            if isempty(app.test_preprocessing_HTML) || ~isvalid(app.test_preprocessing_HTML)
+                return
+            end
+            if isempty(app.SweepIsUsed)
+                app.SweepIsUsed = true(size(app.sweep));
+            end
+
+            % Vorberechnungen
+            n = numel(app.sweep); % [-] Anzahl aller Sweeps (kein TestMethod-Filter)
+
+            % Berechnung
+            sweeps_payload = cell(1, n);
+            for k = 1:n
+                s = app.sweep(k);
+                method_str = char(s.TestMethod);
+                is_lateral = strcmp(method_str, 'Lateral');
+
+                fy_smooth = app.smooth_channel(s, 'Fy', s.Fy);
+
+                sweep_struct = struct( ...
+                    'id',         k - 1, ...                    % 0-basiert fuer JS
+                    'origIndex',  k, ...                          % 1-basiert, Rueckweg nach MATLAB
+                    'testMethod', method_str, ...
+                    'used',       logical(app.SweepIsUsed(k)), ...
+                    'et',         s.et(:)', ...
+                    'fy',         fy_smooth(:)' ...
+                    );
+
+                if is_lateral
+                    fz_smooth = app.smooth_channel(s, 'Fz', s.Fz);
+                    mz_smooth = app.smooth_channel(s, 'Mz', s.Mz);
+                    sweep_struct.fzMedian = median(s.Fz, 'omitnan');
+                    sweep_struct.alphaDeg = rad2deg(s.alpha(:)');
+                    sweep_struct.fz = fz_smooth(:)';
+                    sweep_struct.mz = mz_smooth(:)';
+                end
+
+                sweeps_payload{k} = sweep_struct;
+            end
+
+            % Ausgabe
+            payload = struct( ...
+                'fyThreshold',  FY_THRESHOLD, ...
+                'methodColors', method_colors, ...
+                'sweeps',       {sweeps_payload} ...
+                );
+
+            app.test_preprocessing_HTML.Data = payload;
+        end
+        
+        function plot_cold_to_hot_html(app)
+            % PLOT_COLD_TO_HOT_HTML Baut den Datenvertrag fuer das ECharts-
+            % Cold-to-Hot-Widget (ColdHotHTML) aus den TestMethod=='Lateral'
+            % Sweeps und schreibt ihn nach app.ColdHotHTML.Data. Ersetzt die
+            % reine MATLAB-Plot-Funktion plot_cold_to_hot() (UIAxes_CH_1/2) fuer
+            % die Darstellung -- Kennwert-Berechnung (mu_max, C_Fy,alpha) bleibt
+            % unveraendert. Hide-Unused-Filterung entfaellt hier (wandert in den
+            % Client-Toggle); alle Lateral-Sweeps werden mit 'used' markiert
+            % uebergeben.
+            %
+            % Zweck: Cold-to-Hot-Payload fuer uihtml-Kennwerte-Viewer
+            % Abhaengigkeiten: app.sweep, app.SweepIsUsed, app.smooth_channel(),
+            %                  app.ColdHotHTML
+            % Autor: Lambo || Datum: 09.07.26
+            %
+            % Changelog:
+            %   09.07.26 - Lambo - Initiale Version (ersetzt plot_cold_to_hot)
+
+            % Konfiguration
+            ZERO_BAND_DEG = 1.5; % [deg] Band um SA = 0 fuer Steigungsfit (C_Fy,alpha)
+
+            if isempty(app.sweep)
+                return
+            end
+            if isempty(app.cold_to_hot_HTML) || ~isvalid(app.cold_to_hot_HTML)
+                return
+            end
+
+            methods_ = [app.sweep.TestMethod];
+            is_lateral = (methods_ == "Lateral");
+            lateral_idx = find(is_lateral);
+            lateral_sweeps = app.sweep(lateral_idx);
+
+            if isempty(lateral_sweeps)
+                return
+            end
+            if isempty(app.SweepIsUsed)
+                app.SweepIsUsed = true(size(app.sweep));
+            end
+
+            % Vorberechnungen
+            n = numel(lateral_sweeps); % [-] Anzahl Lateral-Sweeps
+
+            % Berechnung
+            sweeps_payload = cell(1, n);
+            for k = 1:n
+                orig_idx = lateral_idx(k);
+                s = lateral_sweeps(k);
+
+                temp_c = median(s.TtreadC, 'omitnan');
+                fy_smooth = app.smooth_channel(s, 'Fy', s.Fy);
+                fz_smooth = app.smooth_channel(s, 'Fz', s.Fz);
+                mu_max = app.calc_mu_max_robust(fy_smooth, fz_smooth); % [-]
+
+                sa_deg = rad2deg(s.alpha) - app.ZeroOffset(orig_idx).alpha0_deg;
+                idx_zero = abs(sa_deg) <= ZERO_BAND_DEG;
+                if sum(idx_zero) >= 3
+                    p = polyfit(sa_deg(idx_zero), fy_smooth(idx_zero), 1);
+                    c_fy_alpha = p(1); % [N/deg]
+                else
+                    c_fy_alpha = NaN;
+                end
+
+                sweeps_payload{k} = struct( ...
+                    'id',        sprintf('s%d', orig_idx), ...
+                    'origIndex', orig_idx, ...
+                    'used',      logical(app.SweepIsUsed(orig_idx)), ...
+                    'tempC',     temp_c, ...
+                    'muMax',     mu_max, ...
+                    'cFyAlpha',  c_fy_alpha ...
+                    );
+            end
+
+            % Ausgabe
+            payload = struct('sweeps', {sweeps_payload});
+            app.cold_to_hot_HTML.Data = payload;
+        end
+        
+        function plot_camber_sweep_html(app)
+            % PLOT_CAMBER_SWEEP_HTML Baut den Datenvertrag fuer das ECharts-
+            % Camber-Sweep-Widget (CamberHTML) aus den TestMethod=='Lateral'
+            % Sweeps und schreibt ihn nach app.CamberHTML.Data. Ersetzt die
+            % reine MATLAB-Plot-Funktion plot_camber_sweep() (UIAxes_Cam_1/2/3)
+            % fuer die Darstellung -- Farbcodierung nach Sturzwinkel (Turbo)
+            % passiert jetzt client-seitig in JS. Hide-Unused-Filterung
+            % entfaellt hier (wandert in den Client-Toggle); alle Lateral-
+            % Sweeps werden mit 'used' markiert uebergeben.
+            %
+            % Zweck: Camber-Sweep-Payload fuer uihtml-Sweep-Viewer
+            % Abhaengigkeiten: app.sweep, app.SweepIsUsed, app.smooth_channel(),
+            %                  app.CamberHTML
+            % Autor: Lambo || Datum: 09.07.26
+            %
+            % Changelog:
+            %   09.07.26 - Lambo - Initiale Version (ersetzt plot_camber_sweep)
+
+            % Konfiguration
+            if isempty(app.sweep)
+                return
+            end
+            if isempty(app.camber_sweep_HTML) || ~isvalid(app.camber_sweep_HTML)
+                return
+            end
+
+            methods_ = [app.sweep.TestMethod];
+            is_lateral = (methods_ == "Lateral");
+            lateral_idx = find(is_lateral);
+            lateral_sweeps = app.sweep(lateral_idx);
+
+            if isempty(lateral_sweeps)
+                return
+            end
+            if isempty(app.SweepIsUsed)
+                app.SweepIsUsed = true(size(app.sweep));
+            end
+
+            % Vorberechnungen
+            n = numel(lateral_sweeps); % [-] Anzahl Lateral-Sweeps
+
+            % Berechnung
+            sweeps_payload = cell(1, n);
+            for k = 1:n
+                orig_idx = lateral_idx(k);
+                s = lateral_sweeps(k);
+
+                fy_smooth = app.smooth_channel(s, 'Fy', s.Fy);
+                mz_smooth = app.smooth_channel(s, 'Mz', s.Mz);
+                mx_smooth = app.smooth_channel(s, 'Mx', s.Mx);
+
+                sweeps_payload{k} = struct( ...
+                    'id',          sprintf('s%d', orig_idx), ...
+                    'origIndex',   orig_idx, ...
+                    'used',        logical(app.SweepIsUsed(orig_idx)), ...
+                    'alphaDeg',     rad2deg(s.alpha(:)') - app.ZeroOffset(orig_idx).alpha0_deg, ...
+                    'fy',          fy_smooth(:)', ...
+                    'mz',           mz_smooth(:)' - app.ZeroOffset(orig_idx).mz0, ...
+                    'mx',          mx_smooth(:)', ...
+                    'gammaMedian', rad2deg(median(s.gamma, 'omitnan')), ...
+                    'fzMedian',    median(s.Fz, 'omitnan') ...
+                    );
+            end
+
+            % Ausgabe
+            payload = struct('sweeps', {sweeps_payload});
+            app.camber_sweep_HTML.Data = payload;
+        end
+        
+        function plot_rohdaten_explorer_html(app)
+            % PLOT_ROHDATEN_EXPLORER_HTML Baut den Datenvertrag fuer das ECharts-
+            % Rohdaten-Explorer-Widget (RohdatenHTML) aus ALLEN Sweeps und
+            % schreibt ihn nach app.RohdatenHTML.Data. Ersetzt die reine MATLAB-
+            % Plot-Funktion plot_rohdaten_explorer() (UIAxes_RE_1/UIAxes_RE_2)
+            % fuer die Darstellung. WICHTIG: fz und alphaDeg werden bewusst ROH
+            % uebergeben (kein app.smooth_channel) -- der Rohdaten-Explorer soll
+            % die ungefilterten Messwerte zeigen. Hide-Unused-Filterung entfaellt
+            % hier (wandert in den Client-Toggle); alle Sweeps werden mit 'used'
+            % markiert uebergeben.
+            %
+            % Zweck: Rohdaten-Explorer-Payload fuer uihtml-Sweep-Viewer
+            % Abhaengigkeiten: app.sweep, app.SweepIsUsed, app.RohdatenHTML
+            % Autor: Lambo || Datum: 09.07.26
+            %
+            % Changelog:
+            %   09.07.26 - Lambo - Initiale Version (ersetzt plot_rohdaten_explorer)
+
+            % Konfiguration
+            method_colors = struct( ...
+                'Lateral',      '#C72229', ...
+                'Longitudinal', '#33A3E6', ...
+                'Combined',     '#E6B21A', ...
+                'Undefined',    '#808080');
+
+            if isempty(app.sweep)
+                return
+            end
+            if isempty(app.rohdaten_explorer_HTML) || ~isvalid(app.rohdaten_explorer_HTML)
+                return
+            end
+            if isempty(app.SweepIsUsed)
+                app.SweepIsUsed = true(size(app.sweep));
+            end
+
+            % Vorberechnungen
+            n = numel(app.sweep); % [-] Anzahl aller Sweeps (kein TestMethod-Filter)
+
+            % Berechnung
+            sweeps_payload = cell(1, n);
+            for k = 1:n
+                s = app.sweep(k);
+
+                sweeps_payload{k} = struct( ...
+                    'id',         sprintf('s%d', k), ...
+                    'origIndex',  k, ...                          % 1-basiert, Rueckweg nach MATLAB
+                    'testMethod', char(s.TestMethod), ...
+                    'used',       logical(app.SweepIsUsed(k)), ...
+                    'et',         s.et(:)', ...                    % [s] roh
+                    'fz',         s.Fz(:)', ...                    % [N] roh, kein smooth_channel
+                    'alphaDeg',   rad2deg(s.alpha(:)') ...          % [deg] roh
+                    );
+            end
+
+            % Ausgabe
+            payload = struct( ...
+                'methodColors', method_colors, ...
+                'sweeps',       {sweeps_payload} ...
+                );
+            app.rohdaten_explorer_HTML.Data = payload;
+        end
+
+        % Plot Helper
+        function r2 = r2_quality(~, y_raw, y_smooth)
+            % R2_QUALITY Einfaches Guetemass (Bestimmtheitsmass) zwischen
+            % Roh- und geglaetteter Kurve, fuer die Anzeige im
+            % Cornering-Widget (Sidebar-Tabelle).
             %
             % Autor: Lambo || Datum: 08.07.26
 
-            delete(findall(ax, 'Type', 'line'));
-            delete(findall(ax, 'Type', 'patch'));
-            delete(findall(ax, 'Type', 'text'));
-            delete(findall(ax, 'Type', 'constantline')); % xline/yline
-        end
-
-        %% Filter Panel
-
-        function param_list = get_filterable_parameters(app)
-            % GET_FILTERABLE_PARAMETERS Liefert die Liste der fuer Bounds-Filter
-            % verfuegbaren Messkanaele.
-            %
-            % Autor: Lambo || Datum: 07.07.26
-            param_list = app.KNOWN_CHANNELS;
-        end
-
-        function build_filter_panel(app)
-            % FilterPanel-Aufbau
-            outerGrid = uigridlayout(app.FilterPanel, [3, 1]);
-            outerGrid.RowHeight = {22, '1x', 22};
-
-            app.FilterAddDropDown = uidropdown(outerGrid, ...
-                'Items', [{'+ Parameter hinzufuegen'}, app.get_filterable_parameters()], ...
-                'Value', '+ Parameter hinzufuegen');
-            app.FilterAddDropDown.ValueChangedFcn = createCallbackFcn(app, @FilterAddDropDownValueChanged, true);
-
-            app.FilterPanel = uipanel(outerGrid, 'Scrollable', 'on', 'BorderType', 'none');
-            app.FilterRowsGrid = uigridlayout(app.FilterPanel, [1, 1]);
-            app.FilterRowsGrid.RowHeight = {'fit'};
-            app.FilterRowsGrid.RowSpacing = 4;
-
-            app.HideUnusedCheckBox = uicheckbox(outerGrid, ...
-                'Text', 'Ungenutzte Runs ausblenden', 'Value', true);
-            app.HideUnusedCheckBox.ValueChangedFcn = createCallbackFcn(app, @HideUnusedCheckBoxValueChanged, true);
-        end
-
-        function FilterAddDropDownValueChanged(app, event)
-            parameter = app.FilterAddDropDown.Value;
-            if strcmp(parameter, '+ Parameter hinzufuegen')
+            y_raw = y_raw(:);
+            y_smooth = y_smooth(:);
+            valid = ~isnan(y_raw) & ~isnan(y_smooth);
+            if nnz(valid) < 2
+                r2 = NaN;
                 return
             end
-            app.add_filter_row(parameter);
-            app.FilterAddDropDown.Value = '+ Parameter hinzufuegen';
-        end
-
-        function add_filter_row(app, parameter)
-            row_number = numel(app.FilterRows) + 1;
-            app.FilterRowsGrid.RowHeight = repmat({'fit'}, 1, row_number);
-
-            rowGrid = uigridlayout(app.FilterRowsGrid, [2, 4]);
-            rowGrid.Layout.Row = row_number;
-            rowGrid.RowHeight = {16, 22};
-            rowGrid.ColumnWidth = {'1x', 55, 55, 22};
-            rowGrid.Padding = [0 4 0 4];
-            rowGrid.ColumnSpacing = 3;
-            rowGrid.RowSpacing = 2;
-
-            paramLabel = uilabel(rowGrid, 'Text', parameter, 'FontWeight', 'bold', 'FontSize', 9);
-            paramLabel.Layout.Row = 1; paramLabel.Layout.Column = [1 3];
-            delBtn = uibutton(rowGrid, 'push', 'Text', 'x');
-            delBtn.Layout.Row = 1; delBtn.Layout.Column = 4;
-
-            condDD = uidropdown(rowGrid, 'Items', ...
-                {'Lowerbound (>=)', 'Upperbound (<=)', 'Bereich [min,max]', 'Gleich (==)', 'Ungleich (!=)'});
-            condDD.Layout.Row = 2; condDD.Layout.Column = 1;
-
-            val1 = uieditfield(rowGrid, 'numeric', 'Value', 0, 'Tooltip', 'Wert');
-            val1.Layout.Row = 2; val1.Layout.Column = 2;
-
-            val2 = uieditfield(rowGrid, 'numeric', 'Value', 0, 'Tooltip', 'bis', 'Visible', 'off');
-            val2.Layout.Row = 2; val2.Layout.Column = 3;
-
-            for ctrl = [condDD, val1, val2, delBtn]
-                ctrl.UserData = row_number;
-            end
-
-            condDD.ValueChangedFcn = createCallbackFcn(app, @FilterRowChanged, true);
-            val1.ValueChangedFcn = createCallbackFcn(app, @FilterRowChanged, true);
-            val2.ValueChangedFcn = createCallbackFcn(app, @FilterRowChanged, true);
-            delBtn.ButtonPushedFcn = createCallbackFcn(app, @FilterRowDeletePushed, true);
-
-            new_row.Parameter = parameter;
-            new_row.ParameterLabel = paramLabel;
-            new_row.RowLayout = rowGrid;
-            new_row.ConditionDropDown = condDD;
-            new_row.Value1EditField = val1;
-            new_row.Value2EditField = val2;
-            new_row.DeleteButton = delBtn;
-
-            app.FilterRows(row_number) = new_row;
-            app.apply_filters();
-        end
-
-        function FilterRowChanged(app, event)
-            row_idx = event.Source.UserData;
-            row = app.FilterRows(row_idx);
-            is_range = strcmp(row.ConditionDropDown.Value, 'Bereich [min,max]');
-            row.Value2EditField.Visible = is_range;
-            app.apply_filters();
-        end
-
-        function FilterRowDeletePushed(app, event)
-            row_idx = event.Source.UserData;
-            delete(app.FilterRows(row_idx).RowLayout);
-            app.FilterRows(row_idx) = [];
-            app.rebuild_filter_row_layout();
-            app.apply_filters();
-        end
-
-        function rebuild_filter_row_layout(app)
-            app.FilterRowsGrid.RowHeight = repmat({'fit'}, 1, numel(app.FilterRows));
-            for k = 1:numel(app.FilterRows)
-                row = app.FilterRows(k);
-                row.RowLayout.Layout.Row = k;
-                for ctrl = [row.ConditionDropDown, row.Value1EditField, row.Value2EditField, row.DeleteButton]
-                    ctrl.UserData = k;
-                end
+            ss_res = sum((y_raw(valid) - y_smooth(valid)).^2);
+            ss_tot = sum((y_raw(valid) - mean(y_raw(valid))).^2);
+            if ss_tot < eps
+                r2 = 1;
+            else
+                r2 = 1 - ss_res / ss_tot;
             end
         end
+        
+        function mu_max = calc_mu_max_robust(~, fy_smooth, fz_smooth, fz_min_fraction)
+            % CALC_MU_MAX_ROBUST Berechnet mu_max nur an Punkten mit ausreichend
+            % Vertikallast (Fz > fz_min_fraction * Fz_nominal), damit einzelne
+            % Fz-Einbrueche (z.B. Flat-Trac-Bandschwingungen) nicht als
+            % Reibwert-Spitzen fehlinterpretiert werden.
+            %
+            % EINGABE:
+            %   fy_smooth, fz_smooth: geglaettete Kanaele (gleiche Laenge)
+            %   fz_min_fraction: [-] Mindestanteil des Fz-Sollwerts, Default 0.8
+            %
+            % Autor: Lambo || Datum: 09.07.26
+
+            if nargin < 4
+                fz_min_fraction = 0.8; % [-] 80% des Fz-Sollwerts als Mindestschwelle
+            end
+
+            fz_nominal = median(fz_smooth, 'omitnan'); % [N]
+            valid = abs(fz_smooth) >= fz_min_fraction * abs(fz_nominal);
+
+            if nnz(valid) < 3
+                valid = true(size(fz_smooth)); % Fallback, falls Schwelle zu streng greift
+            end
+
+            mu_max = max(abs(fy_smooth(valid) ./ fz_smooth(valid)), [], 'omitnan');
+        end
+
+        %% Filter functions
 
         function apply_filters(app)
-            % APPLY_FILTERS Wertet alle aktiven Filterzeilen (UND-Verknuepfung)
-            % je Sweep aus und aktualisiert app.FilterIsUsed. Der manuelle
-            % Ausschluss (app.ManualExclude) bleibt davon unberuehrt - beide
-            % werden in update_combined_mask() zur effektiven Maske
-            % app.SweepIsUsed zusammengefuehrt.
+            % APPLY_FILTERS Wertet alle aktiven Filterzeilen aus dem
+            % JavaScript-Frontend aus und schreibt das Ergebnis nach
+            % app.FilterIsUsed. Neue Bedingungen: 'Ungleich (!=)',
+            % 'Band um Nominal [±%]', 'Band um Peak [±%]', 'Band um Wert [±%]'.
             %
-            % Autor: Lambo || Datum: 07.07.26
+            % Semantik der val1/val2-Felder (siehe Data Contract im HTML-Header):
+            %   Band um Nominal: val1 = Toleranz [%] um den naechsten Rasterwert
+            %                    aus app.NOMINAL_LEVELS (Snap-to-Nominal)
+            %   Band um Peak:    val1 = Toleranz [%] unterhalb des Kanal-Peaks
+            %                    ueber ALLE Sweeps (Warmup-/Temperaturfenster-Filter)
+            %   Band um Wert:    val1 = Referenzwert, val2 = Toleranz [%]
+            %
+            % Autor: Lambo || Datum: 09.07.26
             % Changelog:
-            %   07.07.26 - Schreibt nun in FilterIsUsed statt SweepIsUsed und
-            %              delegiert Refresh an update_combined_mask()
+            %   09.07.26 - Band-Bedingungen ergaenzt, Peak-Level-Cache pro
+            %              Filterlauf (statt pro Sweep) fuer Performance
 
             if isempty(app.sweep)
                 return
@@ -1386,21 +1082,67 @@ classdef Tire_Filter_App_mat < matlab.apps.AppBase
             n = numel(app.sweep);
             used = true(n, 1);
 
+            % Vorberechnungen: Peak-Level pro Kanal EINMAL cachen (nicht in der
+            % Sweep-Schleife neu berechnen -> O(n) statt O(n^2))
+            peak_cache = struct();
+
             for k = 1:n
                 s = app.sweep(k);
                 for f = 1:numel(app.FilterRows)
-                    row = app.FilterRows(f);
-                    level = app.get_sweep_level(s, row.Parameter);
-                    v1 = row.Value1EditField.Value;
-                    v2 = row.Value2EditField.Value;
 
-                    switch row.ConditionDropDown.Value
-                        case 'Lowerbound (>=)', ok = level >= v1;
-                        case 'Upperbound (<=)', ok = level <= v1;
-                        case 'Bereich [min,max]', ok = level >= v1 && level <= v2;
-                        case 'Gleich (==)', ok = level == v1;
-                        case 'Ungleich (!=)', ok = level ~= v1;
-                        otherwise, ok = true;
+                    % Unterscheidung, falls MATLAB das JS-Array als Cell-Array interpretiert
+                    if iscell(app.FilterRows)
+                        row = app.FilterRows{f};
+                    else
+                        row = app.FilterRows(f);
+                    end
+
+                    level = app.get_sweep_level(s, row.parameter);
+                    v1 = row.val1;
+                    v2 = row.val2;
+
+                    switch row.condition
+                        case 'Lowerbound (>=)'
+                            ok = level >= v1;
+
+                        case 'Upperbound (<=)'
+                            ok = level <= v1;
+
+                        case 'Bereich [min,max]'
+                            ok = level >= v1 && level <= v2;
+
+                        case 'Gleich (==)'
+                            ok = level == v1;
+
+                        case 'Ungleich (!=)'
+                            ok = level ~= v1;
+
+                        case 'Band um Nominal [±%]'
+                            % Snap auf naechsten Rasterwert, dann relative Toleranz.
+                            % v1 = Toleranz [%]
+                            [nominal, tol_abs] = app.get_nominal_level(row.parameter, level, v1);
+                            if isnan(nominal)
+                                ok = true; % Kein Raster definiert -> Filter neutral
+                            else
+                                ok = abs(abs(level) - nominal) <= tol_abs;
+                            end
+
+                        case 'Band um Peak [±%]'
+                            % v1 = Toleranz [%]. Behalte Sweeps, deren Level
+                            % innerhalb v1 % unterhalb des Peaks aller Sweeps liegt.
+                            % Typischer Einsatz: TtreadC -> Warmup-Sweeps ausschliessen.
+                            if ~isfield(peak_cache, row.parameter)
+                                peak_cache.(row.parameter) = app.get_channel_peak_level(row.parameter);
+                            end
+                            peak = peak_cache.(row.parameter);
+                            ok = abs(level) >= peak * (1 - v1 / 100);
+
+                        case 'Band um Wert [±%]'
+                            % v1 = Referenzwert, v2 = Toleranz [%]
+                            ok = abs(level - v1) <= abs(v1) * (v2 / 100);
+
+                        otherwise
+                            ok = true;
                     end
 
                     if ~ok
@@ -1421,12 +1163,9 @@ classdef Tire_Filter_App_mat < matlab.apps.AppBase
         function update_combined_mask(app)
             % UPDATE_COMBINED_MASK Kombiniert Filter-Ergebnis (FilterIsUsed) und
             % manuellen Ausschluss (ManualExclude) zur effektiven Nutzungsmaske
-            % SweepIsUsed, die von ALLEN Plot-Funktionen der App konsultiert
-            % wird. Ein manuell ausgeschlossener Sweep gilt damit fuer die
-            % gesamte App als aussortiert. Triggert danach ein Neu-Zeichnen
-            % aller Plots (Fix fuer den Refresh-Bug beim Smoothing/Filtern).
+            % SweepIsUsed, die von ALLEN Plot-Funktionen konsultiert wird.
             %
-            % Autor: Lambo || Datum: 07.07.26
+            % Autor: Lambo || Datum: 08.07.26
 
             if isempty(app.sweep)
                 return
@@ -1442,311 +1181,116 @@ classdef Tire_Filter_App_mat < matlab.apps.AppBase
             app.refresh_all_plots();
         end
 
-        function refresh_all_plots(app)
-            % REFRESH_ALL_PLOTS Zeichnet ALLE Plots der App neu. Zentrale
-            % Stelle, die von Filter-, Smoothing- und manuellen
-            % Auswahl-Aenderungen aufgerufen wird, damit keine Tabs mehr
-            % veraltete Daten zeigen.
+        function [nominal, tol_abs] = get_nominal_level(app, parameter, level, tol_pct)
+            % GET_NOMINAL_LEVEL Snap-to-Nominal: Findet den naechstgelegenen
+            % Sollwert aus app.NOMINAL_LEVELS fuer den gegebenen Sweep-Level und
+            % berechnet die zugehoerige absolute Toleranz.
             %
-            % Autor: Lambo || Datum: 07.07.26
+            % Sonderfall nominal == 0 (z. B. gamma = 0 deg): Eine relative Toleranz
+            % um 0 waere degeneriert -> Toleranz wird auf tol_pct % des kleinsten
+            % Rasterabstands bezogen.
+            %
+            % EINGABE:
+            %   parameter: Kanalname (Feldname in app.NOMINAL_LEVELS)
+            %   level:     Sweep-Level (median des Kanals) [Kanaleinheit]
+            %   tol_pct:   Toleranz [%]
+            % AUSGABE:
+            %   nominal:   Naechster Rasterwert [Kanaleinheit], NaN wenn kein Raster
+            %   tol_abs:   Absolute Toleranz [Kanaleinheit]
+            %
+            % Autor: Lambo || Datum: 09.07.26
 
-            if isempty(app.sweep)
+            if ~isfield(app.NOMINAL_LEVELS, parameter)
+                nominal = NaN;
+                tol_abs = NaN;
                 return
             end
 
-            % Neu Plotten
-            app.plot_test_preprocessing();
-            app.plot_cornering();
-            app.plot_cornering_kennwerte();
-            app.plot_camber_sweep();
-            app.plot_drive_brake();
-            app.plot_combined_slip();
-            app.plot_cold_to_hot();
-            app.plot_transient();
-            app.plot_speed_vergleich();
-            app.plot_rohdaten_explorer();
-            app.plot_manual_selection();
+            grid_vals = app.NOMINAL_LEVELS.(parameter);
+            [~, idx] = min(abs(abs(level) - grid_vals));
+            nominal = grid_vals(idx);
 
-            % Smoothing-Guetekriterium (R^2) neu berechnen
-            app.update_smoothing_r2();
-        end
-
-        function idx = find_sweep_at_time(app, t)
-            % FIND_SWEEP_AT_TIME Ermittelt den Index des Sweeps, dessen
-            % ET-Bereich den Zeitpunkt t enthaelt. Fallback: naechstliegender
-            % Sweep-Mittelpunkt, falls t exakt auf einer Luecke liegt.
-            %
-            % Autor: Lambo || Datum: 07.07.26
-
-            idx = [];
-            if isempty(app.sweep)
-                return
-            end
-
-            for k = 1:numel(app.sweep)
-                s = app.sweep(k);
-                if t >= s.et(1) && t <= s.et(end)
-                    idx = k;
-                    return
+            if nominal == 0
+                if numel(grid_vals) > 1
+                    ref = min(diff(sort(grid_vals))); % kleinster Rasterabstand
+                else
+                    ref = 1; % Fallback bei Ein-Punkt-Raster
                 end
+                tol_abs = ref * (tol_pct / 100);
+            else
+                tol_abs = nominal * (tol_pct / 100);
             end
-
-            mids = arrayfun(@(s) (s.et(1) + s.et(end)) / 2, app.sweep);
-            [~, idx] = min(abs(mids - t));
         end
 
-        function ManualSelectAxesClicked(app, event)
-            % MANUALSELECTAXESCLICKED Klick in einen der drei
-            % Sweep-Auswahl-Plots: ermittelt den betroffenen Sweep ueber die
-            % Klick-Zeit (ET) und schaltet dessen manuellen Ausschluss
-            % (app.ManualExclude) um. Aktualisiert danach die
-            % Sweep-Auswahl-Plots UND alle anderen Plots der App.
+        function peak = get_channel_peak_level(app, parameter)
+            % GET_CHANNEL_PEAK_LEVEL Maximaler |Sweep-Level| eines Kanals ueber
+            % alle geladenen Sweeps. Referenz fuer 'Band um Peak [±%]'.
             %
-            % Autor: Lambo || Datum: 07.07.26
+            % Autor: Lambo || Datum: 09.07.26
 
-            if isempty(app.sweep)
-                return
+            n = numel(app.sweep);
+            levels = nan(n, 1);
+            for k = 1:n
+                levels(k) = app.get_sweep_level(app.sweep(k), parameter);
             end
-
-            t_click = event.IntersectionPoint(1);
-            idx = app.find_sweep_at_time(t_click);
-            if isempty(idx)
-                return
-            end
-
-            if isempty(app.ManualExclude)
-                app.ManualExclude = false(size(app.sweep));
-            end
-
-            app.ManualExclude(idx) = ~app.ManualExclude(idx);
-            app.update_combined_mask();
+            peak = max(abs(levels), [], 'omitnan');
         end
 
-        function ShowFilteredYellowCheckBoxValueChanged(app, event)
-            % SHOWFILTEREDYELLOWCHECKBOXVALUECHANGED Schaltet die gelbe
-            % Sondermarkierung fuer rein filter-ausgeschlossene Sweeps im
-            % Sweep-Auswahl-Tab um. Betrifft nur die Darstellung dieses
-            % Tabs, nicht die effektive Nutzungsmaske.
-            %
-            % Autor: Lambo || Datum: 07.07.26
-            if ~isempty(app.sweep)
-                app.plot_manual_selection();
-            end
-        end
+        %% Smoothing functions
 
-        %% Smooth Panel
-
-        function build_smoothing_panel(app)
-            outerGrid = uigridlayout(app.SmoothingPanel, [2, 1]);
-            outerGrid.RowHeight = {22, '1x'};
-
-            app.SmoothingAddDropDown = uidropdown(outerGrid, ...
-                'Items', [{'+ Parameter hinzufuegen'}, app.get_filterable_parameters()], ...
-                'Value', '+ Parameter hinzufuegen');
-            app.SmoothingAddDropDown.ValueChangedFcn = createCallbackFcn(app, @SmoothingAddDropDownValueChanged, true);
-
-            app.SmoothingPanel = uipanel(outerGrid, 'Scrollable', 'on', 'BorderType', 'none');
-            app.SmoothingRowsGrid = uigridlayout(app.SmoothingPanel, [1, 1]);
-            app.SmoothingRowsGrid.RowHeight = {'fit'};
-            app.SmoothingRowsGrid.RowSpacing = 4;
-        end
-
-        function SmoothingAddDropDownValueChanged(app, event)
-            parameter = app.SmoothingAddDropDown.Value;
-            if strcmp(parameter, '+ Parameter hinzufuegen')
-                return
-            end
-            app.add_smoothing_row(parameter);
-            app.SmoothingAddDropDown.Value = '+ Parameter hinzufuegen';
-        end
-
-        function add_smoothing_row(app, parameter)
-            row_number = numel(app.SmoothingRows) + 1;
-            app.SmoothingRowsGrid.RowHeight = repmat({'fit'}, 1, row_number);
-
-            rowGrid = uigridlayout(app.SmoothingRowsGrid, [5, 3]);
-            rowGrid.Layout.Row = row_number;
-            rowGrid.RowHeight = {16, 22, 22, 22, 16};
-            rowGrid.ColumnWidth = {40, '1x', 22};
-            rowGrid.Padding = [0 4 0 4];
-            rowGrid.ColumnSpacing = 3;
-            rowGrid.RowSpacing = 2;
-
-            paramLabel = uilabel(rowGrid, 'Text', parameter, 'FontWeight', 'bold', 'FontSize', 9);
-            paramLabel.Layout.Row = 1; paramLabel.Layout.Column = [1 2];
-            delBtn = uibutton(rowGrid, 'push', 'Text', 'x');
-            delBtn.Layout.Row = 1; delBtn.Layout.Column = 3;
-
-            enabledBox = uicheckbox(rowGrid, 'Text', 'aktiv', 'Value', true);
-            enabledBox.Layout.Row = 2; enabledBox.Layout.Column = 1;
-            typeDD = uidropdown(rowGrid, 'Items', app.SMOOTHING_TYPES, 'Value', app.SMOOTHING_TYPES{1});
-            typeDD.Layout.Row = 2; typeDD.Layout.Column = [2 3];
-
-            param1Label = uilabel(rowGrid, 'Text', 'N', 'HorizontalAlignment', 'right', 'FontSize', 9);
-            param1Label.Layout.Row = 3; param1Label.Layout.Column = 1;
-            param1Edit = uieditfield(rowGrid, 'numeric', 'Value', 4);
-            param1Edit.Layout.Row = 3; param1Edit.Layout.Column = [2 3];
-
-            param2Label = uilabel(rowGrid, 'Text', 'fc [Hz]', 'HorizontalAlignment', 'right', 'FontSize', 9);
-            param2Label.Layout.Row = 4; param2Label.Layout.Column = 1;
-            param2Edit = uieditfield(rowGrid, 'numeric', 'Value', 5);
-            param2Edit.Layout.Row = 4; param2Edit.Layout.Column = [2 3];
-
-            r2Label = uilabel(rowGrid, 'Text', 'R^2: -', 'FontSize', 9, 'FontColor', [0.6 0.6 0.6], ...
-                'HorizontalAlignment', 'right', 'Tooltip', ...
-                'Guete/Aggressivitaet des Filters: R^2 zwischen Roh- und gefiltertem Signal (1 = keine Veraenderung, 0 = starke Glaettung)');
-            r2Label.Layout.Row = 5; r2Label.Layout.Column = [1 3];
-
-            for ctrl = [typeDD, enabledBox, param1Edit, param2Edit, delBtn]
-                ctrl.UserData = row_number;
-            end
-
-            typeDD.ValueChangedFcn = createCallbackFcn(app, @SmoothingTypeChanged, true);
-            enabledBox.ValueChangedFcn = createCallbackFcn(app, @SmoothingRowChanged, true);
-            param1Edit.ValueChangedFcn = createCallbackFcn(app, @SmoothingRowChanged, true);
-            param2Edit.ValueChangedFcn = createCallbackFcn(app, @SmoothingRowChanged, true);
-            delBtn.ButtonPushedFcn = createCallbackFcn(app, @SmoothingRowDeletePushed, true);
-
-            new_row.Parameter = parameter;
-            new_row.RowLayout = rowGrid;
-            new_row.TypeDropDown = typeDD;
-            new_row.EnabledCheckBox = enabledBox;
-            new_row.Param1Label = param1Label;
-            new_row.Param1EditField = param1Edit;
-            new_row.Param2Label = param2Label;
-            new_row.Param2EditField = param2Edit;
-            new_row.R2Label = r2Label;
-            new_row.DeleteButton = delBtn;
-
-            app.SmoothingRows(row_number) = new_row;
-            app.update_smoothing_row_labels(new_row);
-            app.refresh_plots_if_loaded();
-        end
-
-        function update_smoothing_row_labels(~, row)
-            switch row.TypeDropDown.Value
-                case 'Butterworth'
-                    row.Param1Label.Text = 'Ordnung N';
-                    row.Param2Label.Text = 'fc [Hz]';
-                    row.Param2Label.Visible = 'on';
-                    row.Param2EditField.Visible = 'on';
-                case 'Bessel'
-                    row.Param1Label.Text = 'Ordnung N';
-                    row.Param2Label.Text = 'fc [Hz]';
-                    row.Param2Label.Visible = 'on';
-                    row.Param2EditField.Visible = 'on';
-                case 'Savitzky-Golay'
-                    row.Param1Label.Text = 'Ordnung';
-                    row.Param2Label.Text = 'Fenster [Samples]';
-                    row.Param2Label.Visible = 'on';
-                    row.Param2EditField.Visible = 'on';
-                case 'Moving Average'
-                    row.Param1Label.Text = 'Fenster [Samples]';
-                    row.Param2Label.Visible = 'off';
-                    row.Param2EditField.Visible = 'off';
-                case 'Median'
-                    row.Param1Label.Text = 'Fenster [Samples]';
-                    row.Param2Label.Visible = 'off';
-                    row.Param2EditField.Visible = 'off';
-                case 'Hampel (Despike)'
-                    row.Param1Label.Text = 'Fenster K';
-                    row.Param2Label.Text = 'n-Sigma';
-                    row.Param2Label.Visible = 'on';
-                    row.Param2EditField.Visible = 'on';
-            end
-        end
-
-        function SmoothingTypeChanged(app, event)
-            row_idx = event.Source.UserData;
-            app.update_smoothing_row_labels(app.SmoothingRows(row_idx));
-            app.refresh_plots_if_loaded();
-        end
-
-        function SmoothingRowChanged(app, event)
-            app.refresh_plots_if_loaded();
-        end
-
-        function SmoothingRowDeletePushed(app, event)
-            row_idx = event.Source.UserData;
-            delete(app.SmoothingRows(row_idx).RowLayout);
-            app.SmoothingRows(row_idx) = [];
-            app.rebuild_smoothing_row_layout();
-            app.refresh_plots_if_loaded();
-        end
-
-        function rebuild_smoothing_row_layout(app)
-            app.SmoothingRowsGrid.RowHeight = repmat({'fit'}, 1, numel(app.SmoothingRowsGrid));
-            for k = 1:numel(app.SmoothingRows)
-                row = app.SmoothingRows(k);
-                row.RowLayout.Layout.Row = k;
-                for ctrl = [row.TypeDropDown, row.EnabledCheckBox, row.Param1EditField, row.Param2EditField, row.DeleteButton]
-                    ctrl.UserData = k;
-                end
-            end
-        end
-
-        function refresh_plots_if_loaded(app)
-            % REFRESH_PLOTS_IF_LOADED Triggert einen VOLLSTAENDIGEN Neu-Plot
-            % aller Tabs, wenn bereits Daten geladen sind (z.B. nach Aenderung
-            % einer Smoothing-Zeile).
-            %
-            % Autor: Lambo || Datum: 07.07.26
-            % Changelog:
-            %   07.07.26 - Ruft nun refresh_all_plots() statt nur 2 Plot-
-            %              Funktionen auf (Fix: viele Tabs aktualisierten
-            %              sich nach dem Smoothen nicht)
-
-            if ~isempty(app.sweep)
-                app.refresh_all_plots();
-            end
-        end
-
-        % Eigentliches Smoothing
         function x_smooth = apply_smoothing(~, x, filter_type, param1, param2, fs)
-            % APPLY_SMOOTHING Wendet den gewaehlten Filtertyp auf einen
-            % Kanal-Vektor an.
+            % APPLY_SMOOTHING Wendet den gewaehlten Glaettungsfilter auf einen
+            % Kanal an. Alle IIR-Filter laufen durch filtfilt -> Nullphase,
+            % keine kuenstliche Hysterese in Fy-vs-SA-Kennfeldern.
             %
-            % Autor: Lambo || Datum: 07.07.26
+            % Typen und Parameter (muss mit filter_smoothing.html uebereinstimmen):
+            %   Butterworth    : param1 = Ordnung N,  param2 = fc [Hz]  (EMPFOHLEN)
+            %   Bessel         : param1 = Ordnung N,  param2 = fc [Hz]
+            %   Savitzky-Golay : param1 = Ordnung,    param2 = Fenster
+            %   Moving Average : param1 = Fenster
+            %   Median         : param1 = Fenster
+            %   Hampel         : param1 = Fenster,    param2 = n-Sigma
+            %
+            % Autor: Lambo || Datum: 09.07.26
             % Changelog:
-            %   08.07.26 - 'Butterworth' (echter zero-phase Tiefpass ueber
-            %              butter()+filtfilt()) und 'Hampel (Despike)'
-            %              (Ausreisser-/Spike-Entfernung ueber hampel())
-            %              ergaenzt.
+            %   09.07.26 - Butterworth (digital, exaktes fc) als neuer Standard.
+            %              Bessel: bilinear jetzt MIT Prewarping bei fc, sonst
+            %              stimmt die eingestellte Grenzfrequenz nicht (Frequency
+            %              Warping der Bilineartransformation). Hampel ergaenzt
+            %              (reine Spike-Entfernung, Signal bleibt sonst roh).
 
             x = x(:);
             n = numel(x);
 
             switch filter_type
                 case 'Butterworth'
-                    N = round(param1);
-                    fc = param2;
-                    if fc <= 0 || fc >= fs/2 || n < 3*(N+1)
+                    N = round(param1);      % [-] Filterordnung
+                    fc = param2;            % [Hz] Grenzfrequenz
+                    pad_len = 3 * (N + 1);  % [-] Mindestlaenge fuer filtfilt-Randbehandlung
+                    if fc <= 0 || fc >= fs/2 || n <= pad_len
                         x_smooth = x;
                         return
                     end
-                    Wn = fc / (fs/2); % normierte Grenzfrequenz (0..1)
-                    [b, a] = butter(N, Wn, 'low');
+                    [b, a] = butter(N, fc / (fs/2)); % Direkt digital -> fc exakt
                     x_smooth = filtfilt(b, a, x);
 
                 case 'Bessel'
-                    N = round(param1);
-                    fc = param2;
+                    N = round(param1);      % [-] Filterordnung
+                    fc = param2;            % [Hz] Grenzfrequenz
                     if fc <= 0 || fc >= fs/2 || n < 3*N
                         x_smooth = x;
                         return
                     end
-                    Wn = 2*pi*fc;
+                    Wn = 2*pi*fc;           % [rad/s] analoge Grenzfrequenz
                     [num, den] = besself(N, Wn);
-                    [numd, dend] = bilinear(num, den, fs);
+                    % Prewarping bei fc: sorgt dafuer, dass die digitale
+                    % Grenzfrequenz exakt bei fc liegt (4. Argument = Match-Frequenz)
+                    [numd, dend] = bilinear(num, den, fs, fc);
                     x_smooth = filtfilt(numd, dend, x);
 
-                case 'Moving Average'
-                    win = max(1, round(param1));
-                    x_smooth = movmean(x, win);
-
                 case 'Savitzky-Golay'
-                    order = round(param1);
-                    win = round(param2);
+                    order = round(param1);  % [-] Polynomordnung
+                    win = round(param2);    % [-] Fensterbreite (ungerade)
                     if mod(win, 2) == 0
                         win = win + 1;
                     end
@@ -1757,42 +1301,46 @@ classdef Tire_Filter_App_mat < matlab.apps.AppBase
                     end
                     x_smooth = sgolayfilt(x, order, win);
 
+                case 'Moving Average'
+                    win = max(1, round(param1)); % [-] Fensterbreite
+                    x_smooth = movmean(x, win);
+
                 case 'Median'
-                    win = round(param1);
+                    win = round(param1);    % [-] Fensterbreite (ungerade)
                     if mod(win, 2) == 0
                         win = win + 1;
                     end
                     x_smooth = medfilt1(x, win);
 
-                case 'Hampel (Despike)'
-                    % Reine Ausreisser-/Spike-Entfernung (z.B. fuer MZ-Glitches),
-                    % KEIN generelles Glaetten. Ersetzt nur Punkte, die mehr als
-                    % n-Sigma vom lokalen Median abweichen, durch den lokalen
-                    % Median. Empfohlen als erste Stufe VOR einem Butterworth-
-                    % Tiefpass (separate Smoothing-Zeile), damit Spikes nicht
-                    % in die Nachbarschaft verschmiert werden.
-                    win = max(1, round(param1));
-                    nsigma = param2;
-                    if nsigma <= 0
-                        nsigma = 3;
+                case 'Hampel'
+                    % Ausreisser-Filter: ersetzt NUR Spikes (> n-Sigma vom lokalen
+                    % Median), laesst das Signal sonst unveraendert. Ideal fuer
+                    % V/omega -- kein Tiefpass-Effekt, kein Peak-Verlust.
+                    win = max(1, round(param1)); % [-] Halbfenster
+                    nsig = param2;               % [-] Sigma-Schwelle
+                    if nsig <= 0
+                        nsig = 3; % Standardwert nach Hampel-Konvention
                     end
-                    if n <= 2*win
-                        x_smooth = x;
-                        return
-                    end
-                    x_smooth = hampel(x, win, nsigma);
+                    x_smooth = hampel(x, win, nsig);
 
                 otherwise
                     x_smooth = x;
             end
         end
-
+        
         function row = get_smoothing_row_for_parameter(app, parameter)
             row = [];
             for k = 1:numel(app.SmoothingRows)
-                if strcmp(app.SmoothingRows(k).Parameter, parameter) && ...
-                        app.SmoothingRows(k).EnabledCheckBox.Value
-                    row = app.SmoothingRows(k);
+
+                if iscell(app.SmoothingRows)
+                    currentRow = app.SmoothingRows{k};
+                else
+                    currentRow = app.SmoothingRows(k);
+                end
+
+                % Zieht 'parameter' und 'active' aus dem JS-Struct
+                if strcmp(currentRow.parameter, parameter) && currentRow.active
+                    row = currentRow;
                     return
                 end
             end
@@ -1800,286 +1348,156 @@ classdef Tire_Filter_App_mat < matlab.apps.AppBase
 
         function y_out = smooth_channel(app, s, parameter, y_raw)
             row = app.get_smoothing_row_for_parameter(parameter);
+
             if isempty(row)
                 y_out = y_raw;
                 return
             end
+
             fs = 1 / median(diff(s.et), 'omitnan');
-            y_out = app.apply_smoothing(y_raw, row.TypeDropDown.Value, ...
-                row.Param1EditField.Value, row.Param2EditField.Value, fs);
+
+            % Liest 'type', 'param1' und 'param2' aus dem JS-Struct
+            y_out = app.apply_smoothing(y_raw, row.type, row.param1, row.param2, fs);
         end
 
-        function update_smoothing_r2(app)
-            % UPDATE_SMOOTHING_R2 Berechnet fuer jede aktive Smoothing-Zeile
-            % ein R^2-Guetemass zwischen Roh- und gefiltertem Signal (ueber
-            % alle aktuell genutzten Sweeps hinweg gepoolt) und schreibt es
-            % in das zugehoerige R2Label. Dient als Kennzahl dafuer, wie
-            % "aggressiv" ein Filter/Smoothing eingreift:
-            %   R^2 nahe 1  -> Filter veraendert das Signal kaum
-            %   R^2 nahe 0  -> Filter veraendert das Signal stark
-            % Formel: R^2 = 1 - SS_res / SS_tot, mit
-            %   SS_res = sum((roh - gefiltert)^2)
-            %   SS_tot = sum((roh - mean(roh))^2)
+        %% Export
+
+        function export_Tire_Data(app)
+            % EXPORT_TIRE_DATA Exportiert den aktuell geladenen Reifentest
+            % als bereinigtes tireData-Objekt in eine .mat-Datei:
+            %   - Sweeps, die durch Filter oder manuellen Ausschluss NICHT
+            %     genutzt werden (~app.SweepIsUsed), werden komplett entfernt
+            %   - Alle Kanaele werden mit der aktuell aktiven Glaettung
+            %     (app.SmoothingRows) ueberschrieben
+            %   - Nullpunkt-Korrektur (alpha0/mz0 aus app.ZeroOffset) wird
+            %     fest in alpha/Mz eingerechnet, nicht nur fuers Plotten
+            % Dialogfenster (uiputfile) erlaubt Speicherort UND Dateinamen
+            % frei zu waehlen, vorbelegt mit "<Testname>_export_<Datum>".
             %
-            % Autor: Lambo || Datum: 08.07.26
-
-            if isempty(app.sweep) || isempty(app.SmoothingRows)
-                return
-            end
-
-            for r = 1:numel(app.SmoothingRows)
-                row = app.SmoothingRows(r);
-                param = row.Parameter;
-
-                if ~row.EnabledCheckBox.Value
-                    row.R2Label.Text = 'R^2: -';
-                    row.R2Label.FontColor = [0.6 0.6 0.6];
-                    continue
-                end
-
-                y_raw_all = [];
-                y_smooth_all = [];
-
-                for k = 1:numel(app.sweep)
-                    s = app.sweep(k);
-                    y_raw = s.(param);
-                    fs = 1 / median(diff(s.et), 'omitnan');
-                    y_smooth = app.apply_smoothing(y_raw, row.TypeDropDown.Value, ...
-                        row.Param1EditField.Value, row.Param2EditField.Value, fs);
-
-                    y_raw_all = [y_raw_all; y_raw(:)]; %#ok<AGROW>
-                    y_smooth_all = [y_smooth_all; y_smooth(:)]; %#ok<AGROW>
-                end
-
-                valid = ~isnan(y_raw_all) & ~isnan(y_smooth_all);
-                if nnz(valid) < 2
-                    row.R2Label.Text = 'R^2: -';
-                    row.R2Label.FontColor = [0.6 0.6 0.6];
-                    continue
-                end
-
-                y_raw_v = y_raw_all(valid);
-                y_smooth_v = y_smooth_all(valid);
-
-                ss_res = sum((y_raw_v - y_smooth_v).^2);
-                ss_tot = sum((y_raw_v - mean(y_raw_v)).^2);
-
-                if ss_tot <= eps
-                    r2 = 1;
-                else
-                    r2 = 1 - ss_res / ss_tot;
-                end
-                r2 = max(min(r2, 1), 0); % numerisch auf [0,1] clampen
-
-                if r2 >= 0.95
-                    col = [0.35 0.75 0.35]; % gruen: kaum Eingriff
-                elseif r2 >= 0.8
-                    col = [0.90 0.70 0.10]; % gelb: moderat
-                else
-                    col = [0.85 0.20 0.20]; % rot: aggressiv
-                end
-
-                row.R2Label.Text = sprintf('R^2: %.3f', r2);
-                row.R2Label.FontColor = col;
-            end
-        end
-
-        %% Frequenzanalyse-Tab
-
-        function populate_fa_sweep_dropdown(app)
-            % POPULATE_FA_SWEEP_DROPDOWN Befuellt die Sweep-Auswahl im
-            % Frequenzanalyse-Tab nach dem Laden neuer Reifendaten.
-            %
-            % Autor: Lambo || Datum: 08.07.26
+            % Autor: Lambo || Datum: 10.07.26
 
             if isempty(app.sweep)
-                app.FA_SweepDropDown.Items = {};
+                uialert(app.UIFigure, 'Kein Reifentest geladen - nichts zu exportieren.', 'Export nicht moeglich');
                 return
             end
 
-            items = strings(1, numel(app.sweep));
-            for k = 1:numel(app.sweep)
-                s = app.sweep(k);
-                fz = median(s.Fz, 'omitnan');
-                items(k) = sprintf('%d: %s (FZ~%.0fN, %.1fs)', k, char(s.TestMethod), fz, s.et(end)-s.et(1));
+            if isempty(app.SweepIsUsed)
+                mask = true(size(app.sweep)); % noch nicht gefiltert -> alles nutzen
+            else
+                mask = app.SweepIsUsed;
             end
-            app.FA_SweepDropDown.Items = cellstr(items);
-            app.FA_SweepDropDown.ItemsData = 1:numel(app.sweep);
-            app.FA_SweepDropDown.Value = 1;
+
+            if ~any(mask)
+                uialert(app.UIFigure, 'Alle Sweeps sind durch Filter/manuellen Ausschluss deaktiviert - nichts zu exportieren.', 'Export nicht moeglich');
+                return
+            end
+
+            % 1. Ausgeschlossene Sweeps entfernen (Filter + Manuell)
+            export_sweeps = app.sweep(mask);
+            export_offsets = app.ZeroOffset(mask);
+
+            % 2. Glaettung + Nullpunkt-Korrektur fest in die Kanaele einrechnen
+            for k = 1:numel(export_sweeps)
+                s = export_sweeps(k);
+
+                % Glaettung je Kanal (no-op, falls keine aktive Smoothing-Row
+                % fuer den jeweiligen Kanal existiert)
+                for c = 1:numel(app.KNOWN_CHANNELS)
+                    ch = app.KNOWN_CHANNELS{c};
+                    try
+                        s.(ch) = app.smooth_channel(s, ch, s.(ch));
+                    catch
+                        continue % Kanal in diesem tireData-Objekt nicht vorhanden
+                    end
+                end
+
+                % Nullpunkt-Korrektur (Longitudinal/Combined/Undefined haben
+                % laut compute_zero_offsets ohnehin alpha0_deg = mz0 = 0)
+                s.alpha = s.alpha - deg2rad(export_offsets(k).alpha0_deg);
+                s.Mz    = s.Mz - export_offsets(k).mz0;
+
+                export_sweeps(k) = s;
+            end
+
+            % 3. Default-Dateinamen aus Testname + Exportdatum bauen
+            if isempty(app.tire_file)
+                base_name = "Tire";
+            else
+                [~, base_name, ~] = fileparts(app.tire_file);
+                base_name = string(base_name);
+            end
+            date_str = string(datetime('now', 'Format', 'yyyyMMdd_HHmm'));
+            default_name = base_name + "_export_" + date_str + ".mat";
+
+            % 4. Speicherort + Dateiname per Dialog abfragen (frei editierbar)
+            [file, location] = uiputfile('*.mat', 'Bereinigten Reifentest exportieren', default_name);
+            if isequal(file, 0)
+                return % Abgebrochen
+            end
+
+            tireData_export = export_sweeps; %#ok<NASGU> Name der gespeicherten Variable
+            save(fullfile(location, file), 'tireData_export');
+
+            uialert(app.UIFigure, ...
+                sprintf('Export erfolgreich: %s (%d von %d Sweeps)', ...
+                fullfile(location, file), numel(export_sweeps), numel(app.sweep)), ...
+                'Export abgeschlossen', 'Icon', 'success');
         end
 
-        function FA_AnalyzeButtonPushed(app, event)
-            % FA_ANALYZEBUTTONPUSHED Fuehrt fuer den gewaehlten Sweep/Kanal
-            % eine FFT-Analyse durch: identifiziert die Sweep-Grundfrequenz
-            % (aus SA), die Radrotationsfrequenz (aus omega) und die
-            % dominante Ripple-Frequenz oberhalb der Grundfrequenz im
-            % gewaehlten Kraft-/Momentkanal. Daraus wird ein Cutoff-Vorschlag
-            % fuer einen Butterworth-Tiefpass abgeleitet und als Vorschau
-            % (roh vs. Vorschlag) geplottet.
+        %% Eigene Callbacks
+
+        function StartupHTMLDataChanged(app, event)
+            if isequal(event.Data, "start")
+                delete(app.StartupHTML);   % Startup-Screen entfernen
+                % app.MainPanel.Visible = 'on';   % Hauptansicht einblenden – Namen ggf. anpassen
+            end
+        end
+
+        function FilterSmoothingHTMLDataChanged(app, event)
+
+            % Holt das übergebene Daten-Struct aus der HTML-Komponente
+            receivedData = app.FilterSmoothingHTML.Data;
+
+            % 2. Filter-Daten konvertieren und in app.FilterRows einspeisen
+            % (Hier adaptierst du die Struktur auf deine bestehende Backend-Logik)
+            app.FilterRows = receivedData.filters;
+
+            % 3. Smoothing-Daten konvertieren und in app.SmoothingRows einspeisen
+            app.SmoothingRows = receivedData.smoothings;
+
+            % 4. Zentraler Berechnungs- und Plot-Aufruf (kein Auto-Update mehr!)
+            apply_filters(app);
+        end
+
+        function CorneringHTMLEventReceived(app, event)
+            % CORNERINGHTMLEVENTRECEIVED Reagiert auf Events aus dem
+            % Cornering-ECharts-Widget. Aktuell relevant fuer's Backend:
+            % 'sweepUsedToggled' (aendert SweepIsUsed und damit auch
+            % andere Plots/Tabs). 'modeChanged' und 'hideUnusedChanged'
+            % sind rein visuelle Zustaende, die das Widget selbst haelt
+            % -- hier ist nichts zu tun.
             %
             % Autor: Lambo || Datum: 08.07.26
 
-            if isempty(app.sweep)
-                uialert(app.UIFigure, 'Bitte zuerst Reifendaten laden.', 'Keine Daten');
-                return
+            name = event.HTMLEventName;
+            data = event.HTMLEventData;
+
+            switch name
+                case 'sweepUsedToggled'
+                    if isempty(app.SweepIsUsed)
+                        app.SweepIsUsed = true(size(app.sweep));
+                    end
+                    app.SweepIsUsed(data.origIndex) = logical(data.used);
+
+                    app.plot_cornering_html();
+                    % Falls andere Tabs SweepIsUsed ebenfalls
+                    % beruecksichtigen sollen, hier zusaetzlich
+                    % app.refresh_all_plots() aufrufen, sobald diese
+                    % Funktion wieder aktiv ist.
+
+                otherwise
+                    % modeChanged, hideUnusedChanged: kein Backend-Bezug
             end
-
-            idx = app.FA_SweepDropDown.Value;
-            chan = app.FA_ChannelDropDown.Value;
-
-            s = app.sweep(idx);
-            t = s.et(:);
-            y = s.(chan);
-            y = y(:);
-
-            fs = 1 / median(diff(t), 'omitnan');
-            n = numel(y);
-            if n < 16
-                uialert(app.UIFigure, 'Sweep zu kurz fuer eine sinnvolle FFT-Analyse.', 'Zu wenig Daten');
-                return
-            end
-
-            % --- FFT des gewaehlten Kanals ---
-            y_dc = y - mean(y, 'omitnan');
-            Y = fft(y_dc);
-            halfN = floor(n/2);
-            f = (0:halfN-1) * (fs/n);
-            amp = abs(Y(1:halfN)) / n * 2;
-
-            % --- Sweep-Grundfrequenz ueber SA-Spektrum ---
-            sa = s.alpha(:) - mean(s.alpha, 'omitnan');
-            if numel(sa) ~= n
-                m = min(numel(sa), n);
-                sa = sa(1:m);
-            end
-            Ysa = fft(sa, n);
-            amp_sa = abs(Ysa(1:halfN));
-            if numel(amp_sa) > 2
-                [~, idx_fund] = max(amp_sa(2:end));
-                f_fund = f(idx_fund + 1);
-            else
-                f_fund = f(1);
-            end
-            if f_fund <= 0
-                f_fund = fs / n; % Fallback: kleinste aufloesbare Frequenz
-            end
-
-            % --- Radrotationsfrequenz (omega ist bereits in U/s = Hz) ---
-            f_rot = mean(s.omega, 'omitnan');
-
-            % --- Ripple-Peak oberhalb der 3-fachen Grundfrequenz suchen ---
-            mask_search = f > 3 * f_fund;
-            f_search = f(mask_search);
-            amp_search = amp(mask_search);
-            f_ripple = NaN;
-            if numel(amp_search) > 3
-                [~, loc] = findpeaks(amp_search, 'SortStr', 'descend', 'NPeaks', 1);
-                if ~isempty(loc)
-                    f_ripple = f_search(loc(1));
-                end
-            end
-
-            % --- Cutoff-Vorschlag ableiten ---
-            if ~isnan(f_ripple) && f_ripple > f_fund
-                f_cut_suggest = sqrt(max(f_fund * 5, fs/n) * (f_ripple * 0.5));
-                f_cut_suggest = min(f_cut_suggest, f_ripple * 0.8);
-                f_cut_suggest = max(f_cut_suggest, f_fund * 3);
-            else
-                f_cut_suggest = min(f_fund * 8, fs/2 * 0.9); % Fallback ohne klaren Ripple-Peak
-            end
-
-            app.FA_LastCutoffSuggestion = f_cut_suggest;
-            app.FA_LastChannel = chan;
-
-            % --- Zeitsignal-Plot: Roh vs. Cutoff-Vorschlag (Butterworth N=4) ---
-            app.clear_axes(app.UIAxes_FA_Time); hold(app.UIAxes_FA_Time, 'on');
-            y_test = app.apply_smoothing(y, 'Butterworth', 4, f_cut_suggest, fs);
-            plot(app.UIAxes_FA_Time, t, y, 'Color', [0.55 0.55 0.55], 'LineWidth', 0.8, 'DisplayName', 'Roh');
-            plot(app.UIAxes_FA_Time, t, y_test, 'Color', [0.78 0.13 0.16], 'LineWidth', 1.4, ...
-                'DisplayName', sprintf('Vorschlag fc = %.2f Hz', f_cut_suggest));
-            hold(app.UIAxes_FA_Time, 'off');
-            legend(app.UIAxes_FA_Time, 'show', 'Location', 'best');
-            title(app.UIAxes_FA_Time, sprintf('Zeitsignal - Sweep #%d, %s', idx, chan));
-            xlabel(app.UIAxes_FA_Time, 'ET [s]'); ylabel(app.UIAxes_FA_Time, chan);
-
-            % --- Spektrum-Plot mit markierten Frequenzen ---
-            app.clear_axes(app.UIAxes_FA_Spec); hold(app.UIAxes_FA_Spec, 'on');
-            plot(app.UIAxes_FA_Spec, f, amp, 'Color', [0.20 0.55 0.90], 'DisplayName', 'Spektrum');
-            xline(app.UIAxes_FA_Spec, f_fund, '--', 'Color', [0.20 0.75 0.35], 'LineWidth', 1.2, ...
-                'Label', 'Sweep-Grundfrequenz', 'LabelOrientation', 'horizontal');
-            if f_rot > 0 && f_rot < fs/2
-                xline(app.UIAxes_FA_Spec, f_rot, '--', 'Color', [0.90 0.70 0.10], 'LineWidth', 1.2, ...
-                    'Label', 'Radrotation', 'LabelOrientation', 'horizontal');
-            end
-            if ~isnan(f_ripple)
-                xline(app.UIAxes_FA_Spec, f_ripple, '--', 'Color', [0.78 0.13 0.16], 'LineWidth', 1.2, ...
-                    'Label', 'Ripple', 'LabelOrientation', 'horizontal');
-            end
-            xline(app.UIAxes_FA_Spec, f_cut_suggest, '-', 'Color', [1 1 1], 'LineWidth', 1.6, ...
-                'Label', 'Cutoff-Vorschlag', 'LabelOrientation', 'horizontal');
-            hold(app.UIAxes_FA_Spec, 'off');
-            title(app.UIAxes_FA_Spec, 'Amplitudenspektrum');
-            xlabel(app.UIAxes_FA_Spec, 'Frequenz [Hz]'); ylabel(app.UIAxes_FA_Spec, 'Amplitude');
-
-            if ~isnan(f_ripple)
-                xlim_max = min(fs/2, f_ripple * 3);
-            else
-                xlim_max = min(fs/2, f_fund * 30);
-            end
-            if xlim_max > 0
-                xlim(app.UIAxes_FA_Spec, [0, xlim_max]);
-            end
-
-            % --- Ergebnis-Text ---
-            rot_str = sprintf('%.3f Hz', f_rot);
-            if isnan(f_ripple)
-                ripple_str = 'kein klarer Peak gefunden';
-            else
-                ripple_str = sprintf('%.3f Hz', f_ripple);
-            end
-
-            app.FA_ResultLabel.Text = sprintf([ ...
-                'Sweep-Grundfrequenz:   %.3f Hz\n' ...
-                'Radrotationsfrequenz:  %s\n' ...
-                'Ripple-Frequenz:       %s\n' ...
-                'Cutoff-Vorschlag:      %.2f Hz'], ...
-                f_fund, rot_str, ripple_str, f_cut_suggest);
-        end
-
-        function FA_ApplyCutoffButtonPushed(app, event)
-            % FA_APPLYCUTOFFBUTTONPUSHED Uebernimmt den zuletzt ermittelten
-            % Cutoff-Vorschlag als Butterworth-Tiefpass (Ordnung 4) in eine
-            % Smoothing-Zeile fuer den analysierten Kanal - legt die Zeile
-            % an, falls noch keine existiert, sonst wird die bestehende
-            % aktualisiert.
-            %
-            % Autor: Lambo || Datum: 08.07.26
-
-            if isnan(app.FA_LastCutoffSuggestion) || isempty(app.FA_LastChannel)
-                uialert(app.UIFigure, 'Bitte zuerst eine Analyse durchfuehren.', 'Kein Vorschlag');
-                return
-            end
-
-            row = [];
-            for k = 1:numel(app.SmoothingRows)
-                if strcmp(app.SmoothingRows(k).Parameter, app.FA_LastChannel)
-                    row = app.SmoothingRows(k);
-                    break
-                end
-            end
-
-            if isempty(row)
-                app.add_smoothing_row(app.FA_LastChannel);
-                row = app.SmoothingRows(end);
-            end
-
-            row.TypeDropDown.Value = 'Butterworth';
-            row.EnabledCheckBox.Value = true;
-            row.Param1EditField.Value = 4;
-            row.Param2EditField.Value = round(app.FA_LastCutoffSuggestion, 2);
-            app.update_smoothing_row_labels(row);
-
-            app.refresh_plots_if_loaded();
         end
 
     end
@@ -2091,9 +1509,63 @@ classdef Tire_Filter_App_mat < matlab.apps.AppBase
         % Code that executes after component creation
         function startupFcn(app)
 
+            % Startup der App
             clc
-            build_filter_panel(app)
-            build_smoothing_panel(app)
+            % addpath('html') % hier werden die HMTL functions später liegen
+
+            % Erstellen der Javaskript Startmaske (Einblenden wenn alles
+            % andere Fertig ist)
+            app.StartupHTML = uihtml(app.UIFigure);
+            app.StartupHTML.Position = [1 1 app.UIFigure.Position(3) app.UIFigure.Position(4)];
+            app.StartupHTML.HTMLSource = fullfile(pwd, 'startup_screen.html');
+            app.StartupHTML.DataChangedFcn = createCallbackFcn(app, @StartupHTMLDataChanged, true);
+            drawnow
+
+            % Erstellen der Javaskript Elemente für Filter und Smoothing
+            app.FilterSmoothingHTML = uihtml(app.UIFigure);
+            app.FilterSmoothingHTML.Position = [1 1 129 430];
+            app.FilterSmoothingHTML.HTMLSource = fullfile(pwd, 'filter_smoothing.html');
+            app.FilterSmoothingHTML.DataChangedFcn = createCallbackFcn(app, @FilterSmoothingHTMLDataChanged, true);
+
+            % Erstellen der Javaskript Elemente für den Cornering Tab
+            app.CorneringHTML = uihtml(app.CorneringTab_2);
+            app.CorneringHTML.Position = [0 0 640 430];
+            app.CorneringHTML.HTMLSource = fullfile(pwd, 'cornering_plot.html');
+            app.CorneringHTML.HTMLEventReceivedFcn = createCallbackFcn(app, @CorneringHTMLEventReceived, true);
+
+            % Erstellen der Javaskript Elemente für den Cornering Kennwerte
+            app.Cornering_kennwerte_HTML = uihtml(app.CorneringKennwerteTab_2);
+            app.Cornering_kennwerte_HTML.Position = [0 0 640 430];
+            app.Cornering_kennwerte_HTML.HTMLSource = fullfile(pwd, 'cornering_kennwerte.html');
+
+            % Erstellen der Javaskript Elemente für den Manuel Selector
+            app.Manual_selection_html = uihtml(app.ManuelSelctionTab);
+            app.Manual_selection_html.Position = [0 0 640 430];
+            app.Manual_selection_html.HTMLSource = fullfile(pwd, 'manual_selection.html');
+
+            % Erstellen der Javaskript Elemente für den test_prepocessing
+            app.test_preprocessing_HTML = uihtml(app.TestPreprocessingTab);
+            app.test_preprocessing_HTML.Position = [0 0 640 430];
+            app.test_preprocessing_HTML.HTMLSource = fullfile(pwd, 'test_preprocessing.html');
+
+            % Erstellen der Javaskript Elemente für den cold_to_hot
+            app.cold_to_hot_HTML = uihtml(app.ColdtohotVerschleissTab);
+            app.cold_to_hot_HTML.Position = [0 0 640 430];
+            app.cold_to_hot_HTML.HTMLSource = fullfile(pwd, 'cold_to_hot.html');
+
+            % Erstellen der Javaskript Elemente für den Manuel Selector
+            app.camber_sweep_HTML = uihtml(app.CamberSweepTab_2);
+            app.camber_sweep_HTML.Position = [0 0 640 430];
+            app.camber_sweep_HTML.HTMLSource = fullfile(pwd, 'camber_sweep.html');
+
+            % Erstellen der Javaskript Elemente für den rohdaten_explorer
+            app.rohdaten_explorer_HTML = uihtml(app.RohdatenExplorerTab_2);
+            app.rohdaten_explorer_HTML.Position = [0 0 640 430];
+            app.rohdaten_explorer_HTML.HTMLSource = fullfile(pwd, 'rohdaten_explorer.html');
+
+            % Startmaske explizit ganz nach vorne stacken
+            uistack(app.StartupHTML, 'top')
+            drawnow
 
         end
 
@@ -2109,8 +1581,9 @@ classdef Tire_Filter_App_mat < matlab.apps.AppBase
             %   07.07.26 - Einzelne Plot-Aufrufe durch refresh_all_plots()
             %              ersetzt (inkl. neuem Sweep-Auswahl-Tab)
 
-            load_Tire_Data(app)
-            app.refresh_all_plots();
+            load_Tire_Data(app);
+            apply_filters(app);
+            % app.refresh_all_plots();
 
         end
 
@@ -2123,21 +1596,9 @@ classdef Tire_Filter_App_mat < matlab.apps.AppBase
        
         end
 
-        % Value changed function: HideUnusedCheckBox
-        function HideUnusedCheckBoxValueChanged(app, event)
-            % HIDEUNUSEDCHECKBOXVALUECHANGED Schaltet um zwischen "gefilterte/
-            % ausgeschlossene Sweeps ausgrauen" und "komplett ausblenden".
-            % Triggert einen vollstaendigen Neu-Plot aller Tabs.
-            %
-            % Autor: Lambo || Datum: 07.07.26
-            % Changelog:
-            %   07.07.26 - Ruft refresh_all_plots() statt nur 2 Plot-
-            %              Funktionen auf
-
-            if ~isempty(app.sweep)
-                app.refresh_all_plots();
-            end
-
+        % Button pushed function: ExportButton
+        function ExportButtonPushed(app, event)
+            export_Tire_Data(app);
         end
     end
 
@@ -2160,113 +1621,17 @@ classdef Tire_Filter_App_mat < matlab.apps.AppBase
             app.TestPreprocessingTab = uitab(app.TabGroup2);
             app.TestPreprocessingTab.Title = 'Test-Preprocessing';
 
-            % Create UIAxes_Pneu
-            app.UIAxes_Pneu = uiaxes(app.TestPreprocessingTab);
-            title(app.UIAxes_Pneu, 'Pneumatic Trail')
-            xlabel(app.UIAxes_Pneu, 'Schräglaufwinkel SA [deg]')
-            ylabel(app.UIAxes_Pneu, 't_p = -MZ / FY [m]')
-            zlabel(app.UIAxes_Pneu, 'Z')
-            app.UIAxes_Pneu.Position = [2 3 639 133];
-
-            % Create UIAxes_Mu
-            app.UIAxes_Mu = uiaxes(app.TestPreprocessingTab);
-            title(app.UIAxes_Mu, 'Normierte Reibwertkurve')
-            xlabel(app.UIAxes_Mu, 'Schräglaufwinkel SA [deg]')
-            ylabel(app.UIAxes_Mu, '\mu_y = FY / |FZ| [-]')
-            zlabel(app.UIAxes_Mu, 'Z')
-            app.UIAxes_Mu.Position = [0 139 639 133];
-
-            % Create UIAxes_Sweep
-            app.UIAxes_Sweep = uiaxes(app.TestPreprocessingTab);
-            title(app.UIAxes_Sweep, 'Rohdatenverlauf mit Sweep-Grenzen')
-            xlabel(app.UIAxes_Sweep, 'Zeit ET [s]')
-            ylabel(app.UIAxes_Sweep, 'Seitenkraft FY [N]')
-            zlabel(app.UIAxes_Sweep, 'Z')
-            app.UIAxes_Sweep.Position = [1 275 639 133];
-
             % Create CorneringTab_2
             app.CorneringTab_2 = uitab(app.TabGroup2);
             app.CorneringTab_2.Title = 'Cornering';
-
-            % Create UIAxes_3
-            app.UIAxes_3 = uiaxes(app.CorneringTab_2);
-            title(app.UIAxes_3, 'Sturtzmoment / Schräglaufwinkel')
-            xlabel(app.UIAxes_3, 'Schräglaufwinkel')
-            ylabel(app.UIAxes_3, 'Sturtzmoment Mx [Nm]')
-            zlabel(app.UIAxes_3, 'Z')
-            app.UIAxes_3.Position = [2 3 639 133];
-
-            % Create UIAxes_2
-            app.UIAxes_2 = uiaxes(app.CorneringTab_2);
-            title(app.UIAxes_2, 'Title')
-            xlabel(app.UIAxes_2, 'Rückstellmoment MZ [Nm]')
-            ylabel(app.UIAxes_2, 'Schräglaufwinkel SA [deg]')
-            zlabel(app.UIAxes_2, 'Z')
-            app.UIAxes_2.Position = [0 139 639 133];
-
-            % Create UIAxes
-            app.UIAxes = uiaxes(app.CorneringTab_2);
-            title(app.UIAxes, 'Seitenkraft / Schräglaufwinkel')
-            xlabel(app.UIAxes, 'Schraglaufwinkel SA [deg]')
-            ylabel(app.UIAxes, 'Seitenkraft FY [N]')
-            zlabel(app.UIAxes, 'Z')
-            app.UIAxes.Position = [1 275 639 133];
 
             % Create CorneringKennwerteTab_2
             app.CorneringKennwerteTab_2 = uitab(app.TabGroup2);
             app.CorneringKennwerteTab_2.Title = 'Cornering Kennwerte';
 
-            % Create UIAxes_CK_3
-            app.UIAxes_CK_3 = uiaxes(app.CorneringKennwerteTab_2);
-            title(app.UIAxes_CK_3, 'Cornering-Stiffness')
-            xlabel(app.UIAxes_CK_3, 'FZ [N]')
-            ylabel(app.UIAxes_CK_3, 'C_{Fy,\alpha} [N/deg]')
-            zlabel(app.UIAxes_CK_3, 'Z')
-            app.UIAxes_CK_3.Position = [2 3 639 133];
-
-            % Create UIAxes_CK_2
-            app.UIAxes_CK_2 = uiaxes(app.CorneringKennwerteTab_2);
-            title(app.UIAxes_CK_2, 'Max. Reibwert')
-            xlabel(app.UIAxes_CK_2, 'FZ [N]')
-            ylabel(app.UIAxes_CK_2, '\mu_{y,max}')
-            zlabel(app.UIAxes_CK_2, 'Z')
-            app.UIAxes_CK_2.Position = [0 139 639 133];
-
-            % Create UIAxes_CK_1
-            app.UIAxes_CK_1 = uiaxes(app.CorneringKennwerteTab_2);
-            title(app.UIAxes_CK_1, 'Max. Seitenkraft')
-            xlabel(app.UIAxes_CK_1, 'FZ [N]')
-            ylabel(app.UIAxes_CK_1, 'FY_{max} [N]')
-            zlabel(app.UIAxes_CK_1, 'Z')
-            app.UIAxes_CK_1.Position = [1 275 639 133];
-
             % Create CamberSweepTab_2
             app.CamberSweepTab_2 = uitab(app.TabGroup2);
             app.CamberSweepTab_2.Title = 'Camber Sweep';
-
-            % Create UIAxes_Cam_3
-            app.UIAxes_Cam_3 = uiaxes(app.CamberSweepTab_2);
-            title(app.UIAxes_Cam_3, 'Sturzmoment / Schräglaufwinkel')
-            xlabel(app.UIAxes_Cam_3, 'SA [deg]')
-            ylabel(app.UIAxes_Cam_3, 'MX [Nm]')
-            zlabel(app.UIAxes_Cam_3, 'Z')
-            app.UIAxes_Cam_3.Position = [2 3 639 133];
-
-            % Create UIAxes_Cam_2
-            app.UIAxes_Cam_2 = uiaxes(app.CamberSweepTab_2);
-            title(app.UIAxes_Cam_2, 'Rückstellmoment / Schräglaufwinkel')
-            xlabel(app.UIAxes_Cam_2, 'SA [deg]')
-            ylabel(app.UIAxes_Cam_2, 'MZ [Nm]')
-            zlabel(app.UIAxes_Cam_2, 'Z')
-            app.UIAxes_Cam_2.Position = [0 139 639 133];
-
-            % Create UIAxes_Cam_1
-            app.UIAxes_Cam_1 = uiaxes(app.CamberSweepTab_2);
-            title(app.UIAxes_Cam_1, 'Seitenkraft / Schräglaufwinkel')
-            xlabel(app.UIAxes_Cam_1, 'SA [deg]')
-            ylabel(app.UIAxes_Cam_1, 'FY [N]')
-            zlabel(app.UIAxes_Cam_1, 'Z')
-            app.UIAxes_Cam_1.Position = [1 275 639 133];
 
             % Create DriveBrakeTab_2
             app.DriveBrakeTab_2 = uitab(app.TabGroup2);
@@ -2320,22 +1685,6 @@ classdef Tire_Filter_App_mat < matlab.apps.AppBase
             app.ColdtohotVerschleissTab = uitab(app.TabGroup2);
             app.ColdtohotVerschleissTab.Title = 'Cold-to-hot / Verschleiss';
 
-            % Create UIAxes_CH_2
-            app.UIAxes_CH_2 = uiaxes(app.ColdtohotVerschleissTab);
-            title(app.UIAxes_CH_2, 'Cornering-Stiffness über Temperatur')
-            xlabel(app.UIAxes_CH_2, 'T_{tread,C} [°C]')
-            ylabel(app.UIAxes_CH_2, 'C_{Fy,\alpha} [N/deg]')
-            zlabel(app.UIAxes_CH_2, 'Z')
-            app.UIAxes_CH_2.Position = [0 139 639 133];
-
-            % Create UIAxes_CH_1
-            app.UIAxes_CH_1 = uiaxes(app.ColdtohotVerschleissTab);
-            title(app.UIAxes_CH_1, '''Max. Reibwert über Temperatur''')
-            xlabel(app.UIAxes_CH_1, 'T_{tread,C} [°C]')
-            ylabel(app.UIAxes_CH_1, '\mu_{y,max} [-]')
-            zlabel(app.UIAxes_CH_1, 'Z')
-            app.UIAxes_CH_1.Position = [1 275 639 133];
-
             % Create TransientTab_2
             app.TransientTab_2 = uitab(app.TabGroup2);
             app.TransientTab_2.Title = 'Transient';
@@ -2388,104 +1737,9 @@ classdef Tire_Filter_App_mat < matlab.apps.AppBase
             app.RohdatenExplorerTab_2 = uitab(app.TabGroup2);
             app.RohdatenExplorerTab_2.Title = 'Rohdaten Explorer';
 
-            % Create UIAxes_RE_2
-            app.UIAxes_RE_2 = uiaxes(app.RohdatenExplorerTab_2);
-            title(app.UIAxes_RE_2, 'Schräglaufwinkel-Zeitverlauf')
-            xlabel(app.UIAxes_RE_2, 'ET [s]')
-            ylabel(app.UIAxes_RE_2, 'SA [deg]')
-            zlabel(app.UIAxes_RE_2, 'Z')
-            app.UIAxes_RE_2.Position = [0 139 639 133];
-
-            % Create UIAxes_RE_1
-            app.UIAxes_RE_1 = uiaxes(app.RohdatenExplorerTab_2);
-            title(app.UIAxes_RE_1, 'Normalkraft-Zeitverlauf')
-            xlabel(app.UIAxes_RE_1, 'ET [s]')
-            ylabel(app.UIAxes_RE_1, 'FZ [N]')
-            zlabel(app.UIAxes_RE_1, 'Z')
-            app.UIAxes_RE_1.Position = [1 275 639 133];
-
             % Create ManuelSelctionTab
             app.ManuelSelctionTab = uitab(app.TabGroup2);
             app.ManuelSelctionTab.Title = 'Manuel Selction';
-
-            % Create UIAxes_MS_3
-            app.UIAxes_MS_3 = uiaxes(app.ManuelSelctionTab);
-            title(app.UIAxes_MS_3, 'Seitenkraft / Längsschlupf')
-            xlabel(app.UIAxes_MS_3, '\kappa [-]')
-            ylabel(app.UIAxes_MS_3, 'FY [N]')
-            zlabel(app.UIAxes_MS_3, 'Z')
-            app.UIAxes_MS_3.Position = [2 3 639 133];
-
-            % Create UIAxes_MS_2
-            app.UIAxes_MS_2 = uiaxes(app.ManuelSelctionTab);
-            title(app.UIAxes_MS_2, 'Rückstellmoment / Längsschlupf')
-            xlabel(app.UIAxes_MS_2, '\kappa [-]')
-            ylabel(app.UIAxes_MS_2, 'MZ [Nm]')
-            zlabel(app.UIAxes_MS_2, 'Z')
-            app.UIAxes_MS_2.Position = [0 139 639 133];
-
-            % Create UIAxes_MS_1
-            app.UIAxes_MS_1 = uiaxes(app.ManuelSelctionTab);
-            title(app.UIAxes_MS_1, 'Längskraft / Längsschlupf')
-            xlabel(app.UIAxes_MS_1, '\kappa [-]')
-            ylabel(app.UIAxes_MS_1, 'FX [N]')
-            zlabel(app.UIAxes_MS_1, 'Z')
-            app.UIAxes_MS_1.Position = [1 275 639 133];
-
-            % Create ShowFilteredYellowCheckBox
-            app.ShowFilteredYellowCheckBox = uicheckbox(app.ManuelSelctionTab);
-            app.ShowFilteredYellowCheckBox.Text = 'ShowFilteredYellowCheckBox';
-            app.ShowFilteredYellowCheckBox.Position = [51 127 181 22];
-
-            % Create FrequenzanalyseTab
-            app.FrequenzanalyseTab = uitab(app.TabGroup2);
-            app.FrequenzanalyseTab.Title = 'Frequenzanalyse';
-
-            % Create UIAxes_FA_Time
-            app.UIAxes_FA_Time = uiaxes(app.FrequenzanalyseTab);
-            title(app.UIAxes_FA_Time, 'Zeitsignal (Roh vs. Cutoff-Vorschlag)')
-            xlabel(app.UIAxes_FA_Time, 'ET [s]')
-            ylabel(app.UIAxes_FA_Time, 'Kanal')
-            zlabel(app.UIAxes_FA_Time, 'Z')
-            app.UIAxes_FA_Time.Position = [1 240 639 130];
-
-            % Create UIAxes_FA_Spec
-            app.UIAxes_FA_Spec = uiaxes(app.FrequenzanalyseTab);
-            title(app.UIAxes_FA_Spec, 'Amplitudenspektrum')
-            xlabel(app.UIAxes_FA_Spec, 'Frequenz [Hz]')
-            ylabel(app.UIAxes_FA_Spec, 'Amplitude')
-            zlabel(app.UIAxes_FA_Spec, 'Z')
-            app.UIAxes_FA_Spec.Position = [1 96 639 134];
-
-            % Create FA_SweepDropDown
-            app.FA_SweepDropDown = uidropdown(app.FrequenzanalyseTab);
-            app.FA_SweepDropDown.Items = {'Bitte Daten laden'};
-            app.FA_SweepDropDown.FontSize = 10;
-            app.FA_SweepDropDown.Position = [8 6 260 22];
-
-            % Create FA_ChannelDropDown
-            app.FA_ChannelDropDown = uidropdown(app.FrequenzanalyseTab);
-            app.FA_ChannelDropDown.Items = {'Fx', 'Fy', 'Fz', 'Mx', 'My', 'Mz'};
-            app.FA_ChannelDropDown.Value = 'Fz';
-            app.FA_ChannelDropDown.FontSize = 10;
-            app.FA_ChannelDropDown.Position = [272 6 80 22];
-
-            % Create FA_AnalyzeButton
-            app.FA_AnalyzeButton = uibutton(app.FrequenzanalyseTab, 'push');
-            app.FA_AnalyzeButton.ButtonPushedFcn = createCallbackFcn(app, @FA_AnalyzeButtonPushed, true);
-            app.FA_AnalyzeButton.Position = [358 6 90 22];
-            app.FA_AnalyzeButton.Text = 'Analysieren';
-
-            % Create FA_ApplyCutoffButton
-            app.FA_ApplyCutoffButton = uibutton(app.FrequenzanalyseTab, 'push');
-            app.FA_ApplyCutoffButton.ButtonPushedFcn = createCallbackFcn(app, @FA_ApplyCutoffButtonPushed, true);
-            app.FA_ApplyCutoffButton.Position = [454 6 150 22];
-            app.FA_ApplyCutoffButton.Text = 'Cutoff uebernehmen';
-
-            % Create FA_ResultLabel
-            app.FA_ResultLabel = uilabel(app.FrequenzanalyseTab);
-            app.FA_ResultLabel.Position = [8 32 620 60];
-            app.FA_ResultLabel.Text = 'Sweep auswaehlen, Kanal waehlen und "Analysieren" klicken.';
 
             % Create Panel
             app.Panel = uipanel(app.UIFigure);
@@ -2524,61 +1778,20 @@ classdef Tire_Filter_App_mat < matlab.apps.AppBase
             % Create Test_file_directroy
             app.Test_file_directroy = uieditfield(app.AuswahlPanel, 'text');
             app.Test_file_directroy.FontSize = 10;
-            app.Test_file_directroy.Position = [113 12 544 22];
+            app.Test_file_directroy.Position = [113 12 430 22];
             app.Test_file_directroy.Value = '''C:\Users\Danie\OneDrive\Desktop\Tire_Data_fitting_MF6.2\0_Tire_test_data\0_Reifen_43075\B2356run6.mat''';
 
             % Create LoadTireDataButton
             app.LoadTireDataButton = uibutton(app.AuswahlPanel, 'push');
             app.LoadTireDataButton.ButtonPushedFcn = createCallbackFcn(app, @LoadTireDataButtonPushed, true);
-            app.LoadTireDataButton.Position = [667 11 89 23];
+            app.LoadTireDataButton.Position = [550 11 89 23];
             app.LoadTireDataButton.Text = 'Load Tire Data';
 
-            % Create FilterPanel
-            app.FilterPanel = uipanel(app.UIFigure);
-            app.FilterPanel.ForegroundColor = [0.7804 0.1333 0.1608];
-            app.FilterPanel.Title = 'Filter';
-            app.FilterPanel.Position = [3 216 127 214];
-
-            % Create FilterRowsGrid
-            app.FilterRowsGrid = uigridlayout(app.FilterPanel);
-            app.FilterRowsGrid.ColumnWidth = {'1x'};
-            app.FilterRowsGrid.RowHeight = {22, '1x', 22};
-            app.FilterRowsGrid.Padding = [3.92000579833984 10 3.92000579833984 10];
-
-            % Create FilterAddDropDown
-            app.FilterAddDropDown = uidropdown(app.FilterRowsGrid);
-            app.FilterAddDropDown.Items = {'+ Add Parameter'};
-            app.FilterAddDropDown.FontSize = 10;
-            app.FilterAddDropDown.Layout.Row = 1;
-            app.FilterAddDropDown.Layout.Column = 1;
-            app.FilterAddDropDown.Value = '+ Add Parameter';
-
-            % Create HideUnusedCheckBox
-            app.HideUnusedCheckBox = uicheckbox(app.FilterRowsGrid);
-            app.HideUnusedCheckBox.ValueChangedFcn = createCallbackFcn(app, @HideUnusedCheckBoxValueChanged, true);
-            app.HideUnusedCheckBox.Text = 'Hide Unused Data';
-            app.HideUnusedCheckBox.Layout.Row = 3;
-            app.HideUnusedCheckBox.Layout.Column = 1;
-
-            % Create SmoothingPanel
-            app.SmoothingPanel = uipanel(app.UIFigure);
-            app.SmoothingPanel.ForegroundColor = [0.7804 0.1333 0.1608];
-            app.SmoothingPanel.Title = 'Smoothing';
-            app.SmoothingPanel.Position = [1 1 127 214];
-
-            % Create SmoothingRowsGrid
-            app.SmoothingRowsGrid = uigridlayout(app.SmoothingPanel);
-            app.SmoothingRowsGrid.ColumnWidth = {'1x'};
-            app.SmoothingRowsGrid.RowHeight = {22, '1x'};
-            app.SmoothingRowsGrid.Padding = [3.92000579833984 10 3.92000579833984 10];
-
-            % Create SmoothingAddDropDown
-            app.SmoothingAddDropDown = uidropdown(app.SmoothingRowsGrid);
-            app.SmoothingAddDropDown.Items = {'+ Add Parameter'};
-            app.SmoothingAddDropDown.FontSize = 10;
-            app.SmoothingAddDropDown.Layout.Row = 1;
-            app.SmoothingAddDropDown.Layout.Column = 1;
-            app.SmoothingAddDropDown.Value = '+ Add Parameter';
+            % Create ExportButton
+            app.ExportButton = uibutton(app.AuswahlPanel, 'push');
+            app.ExportButton.ButtonPushedFcn = createCallbackFcn(app, @ExportButtonPushed, true);
+            app.ExportButton.Position = [646 11 115 23];
+            app.ExportButton.Text = 'Export Tire Data';
 
             % Show the figure after all components are created
             app.UIFigure.Visible = 'on';
