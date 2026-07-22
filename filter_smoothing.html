@@ -325,6 +325,74 @@
 
         /* ── SVG icons (inline) ──────────────────── */
         .icon { display: inline-flex; align-items: center; }
+
+        /* ═══════════════════════════════════════════════════════════════
+           FILTER TOOLTIPS
+           Erscheint nach 3 s Verweilen über dem Smoothing-Typ-Select.
+           Nutzt position:fixed → überlebt overflow:hidden der Sidebar.
+        ═══════════════════════════════════════════════════════════════ */
+        .ttc-tooltip {
+            position: fixed;
+            width: 300px;
+            background: #141414;
+            border: 1px solid #2e2e2e;
+            border-radius: 4px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.72), 0 2px 8px rgba(0,0,0,0.5);
+            z-index: 9999;
+            pointer-events: none;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            opacity: 0;
+            transform: translateX(-6px);
+            transition: opacity 0.18s ease, transform 0.18s ease;
+        }
+        .ttc-tooltip.visible {
+            opacity: 1;
+            transform: translateX(0);
+        }
+        .ttc-accent        { height: 2px; background: linear-gradient(90deg,#c72229,#7a1015); }
+        .ttc-header        { padding: 9px 12px 8px; border-bottom: 1px solid #1e1e1e; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+        .ttc-name          { font-size: 13px; font-weight: 700; letter-spacing: .08em; color: #f0f0f0; text-transform: uppercase; }
+        .ttc-badge         { font-size: 9px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; border-radius: 2px; padding: 2px 5px; }
+        .ttc-badge-red     { color: #c72229; background: rgba(199,34,41,.1); border: 1px solid rgba(199,34,41,.25); }
+        .ttc-badge-gray    { color: #555; background: #1a1a1a; border: 1px solid #2a2a2a; }
+        .ttc-body          { padding: 8px 12px 0; }
+        .ttc-desc          { font-size: 10px; color: #9a9a9a; line-height: 1.55; margin-bottom: 6px; }
+        .ttc-desc strong   { color: #ccc; font-weight: 500; }
+        .ttc-ei-label      { font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: #555; margin-bottom: 4px; display: flex; align-items: center; gap: 5px; }
+        .ttc-ei-text       { font-size: 10px; color: #9a9a9a; line-height: 1.55; margin-bottom: 8px; }
+        .ttc-ei-text strong{ color: #ccc; font-weight: 500; }
+        .ttc-chart-wrap    { margin: 0 12px 6px; background: #0e0e0e; border: 1px solid #1e1e1e; border-radius: 3px; overflow: hidden; }
+        .ttc-chart-wrap svg{ display: block; }
+        .ttc-pbar          { margin: 0 12px 10px; padding: 5px 8px; background: #0e0e0e; border: 1px solid #1e1e1e; border-radius: 3px; display: flex; align-items: center; gap: 6px; }
+        .ttc-pitem         { flex: 1; display: flex; align-items: center; gap: 5px; }
+        .ttc-pkey          { font-family: "SFMono-Regular", Consolas, monospace; font-size: 9px; color: #555; }
+        .ttc-pval          { font-family: "SFMono-Regular", Consolas, monospace; font-size: 13px; font-weight: 700; color: #f0f0f0; min-width: 22px; text-align: center; }
+        .ttc-punit         { font-size: 9px; color: #333; }
+        .ttc-pnote         { font-size: 8.5px; color: #444; border-left: 1px solid #1e1e1e; padding-left: 8px; line-height: 1.4; max-width: 80px; text-align: right; flex-shrink: 0; }
+        .ttc-psep          { width: 1px; height: 18px; background: #222; flex-shrink: 0; }
+        .ttc-footer        { padding: 5px 12px; border-top: 1px solid #1a1a1a; display: flex; align-items: center; gap: 6px; }
+        .ttc-footer-txt    { font-size: 8.5px; color: #333; letter-spacing: .06em; }
+
+        /* Roter Fortschrittsbalken am unteren Rand des Select-Wrappers */
+        .ttc-progress {
+            position: absolute;
+            bottom: 0; left: 0;
+            height: 2px;
+            width: 0%;
+            background: linear-gradient(90deg, #c72229, #ff5555);
+            pointer-events: none;
+            border-radius: 0 1px 1px 0;
+        }
+        /* Wrapper um das type-select für Progress-Bar-Positionierung */
+        .ttc-select-wrap {
+            position: relative;
+            margin-bottom: 6px;
+        }
+        .ttc-select-wrap .full-select {
+            margin-bottom: 0;
+            width: 100%;
+        }
     </style>
 </head>
 <body>
@@ -479,11 +547,7 @@
         { channel: 'omega',   active: true,  type: 'Hampel',         param1: '7',   param2: '3'  }
     ];
 
-    /* Qualitaets-Basisfilter:
-       - TtreadC Band um Peak: Warmup-Sweeps raus (Reifen ausserhalb
-         des thermischen Betriebsfensters)
-       - Fz Lowerbound: kein Reifenkontakt
-       - Fz Band um Nominal: Sweeps mit Fz-Regelabweichung > 10 % raus */
+    /* Qualitaets-Basisfilter */
     const DEFAULT_FILTERS = [
         { channel: 'TtreadC', condition: 'Band um Peak [±%]',    val1: '25', val2: ''  },
         { channel: 'Fz',      condition: 'Lowerbound (>=)',      val1: '50', val2: ''  },
@@ -572,8 +636,11 @@
                     onclick="removeSmoothing('${s.id}')">${trashSvg}</button>
             </div>
             <div class="${s.active ? '' : 'inactive-body'}">
-                <select class="full-select" aria-label="Smoothing-Typ"
-                    onchange="updateSmoothing('${s.id}','type',this.value)">${typeOpts}</select>
+                <div class="ttc-select-wrap">
+                    <select class="full-select" aria-label="Smoothing-Typ"
+                        data-ttc-type="${s.type}"
+                        onchange="updateSmoothing('${s.id}','type',this.value);this.dataset.ttcType=this.value">${typeOpts}</select>
+                </div>
                 <div class="input-pair${lbl2 ? '' : ' single'}">
                     <div class="param-field">
                         <span class="param-label">${lbl1}</span>
@@ -602,6 +669,9 @@
 
         const track = document.getElementById('unusedTrack');
         track.classList.toggle('on', hideUnused);
+
+        /* Tooltip-Listener nach jedem Re-Render neu binden */
+        TTC.attachListeners();
     }
 
     /* ── Filter actions ──────────────────────────────────── */
@@ -617,7 +687,7 @@
         const f = filters.find(f => f.id === id);
         if (!f) return;
         f[field] = value;
-        if (field === 'condition') renderAll(); // Feldanzahl/Platzhalter aendern sich
+        if (field === 'condition') renderAll();
     }
 
     /* ── Smoothing actions ───────────────────────────────── */
@@ -633,7 +703,7 @@
         const s = smoothings.find(s => s.id === id);
         if (!s) return;
         s[field] = value;
-        if (field === 'type') renderAll(); // Labels und Feldanzahl aendern sich
+        if (field === 'type') renderAll();
     }
     function toggleSmoothingActive(id) {
         const s = smoothings.find(s => s.id === id);
@@ -680,11 +750,7 @@
     }
 
     /* ── Init ────────────────────────────────────────────── */
-    // MATLAB ruft beim Laden automatisch eine globale Funktion namens
-    // "setup" auf und übergibt die HTML-Component-Referenz.
-    function setup(component) {
-        htmlComponent = component;
-    }
+    function setup(component) { htmlComponent = component; }
 
     function init() {
         loadDefaults();
@@ -692,6 +758,353 @@
     }
 
     window.onload = init;
+
+
+    /* ================================================================
+       TTC FILTER TOOLTIP ENGINE
+       Namespace: window.TTC
+       - TTC.attachListeners()  — nach jedem renderAll() aufrufen
+       - Tooltip erscheint nach 3 s Hover über dem Smoothing-Typ-Select
+       - Roter Fortschrittsbalken zeigt verbleibende Wartezeit an
+       - Animiert durch 4 Parameter-Stufen des jeweiligen Filters
+    ================================================================ */
+    const TTC = (function () {
+
+        /* ── Signalgenerator (N=80 Samples, deterministisch) ── */
+        const N = 80;
+
+        function makeRaw(spiky) {
+            const pts = [];
+            for (let i = 0; i < N; i++) {
+                const t = i / N;
+                const v = Math.sin(t * Math.PI * 4 * 2.5) * 0.55
+                        + Math.sin(t * Math.PI * 4 * 6.1) * 0.18
+                        + (Math.sin(i * 47.3 + 1.1) * 0.5
+                           + Math.sin(i * 31.1 + 2.7) * 0.3) * 0.12;
+                pts.push(v);
+            }
+            if (spiky) {
+                [10, 28, 52, 70].forEach((idx, k) => {
+                    pts[idx] += (k % 2 === 0 ? 1.3 : -1.25);
+                });
+            }
+            return pts;
+        }
+
+        function movAvg(data, win) {
+            const h = Math.floor(Math.max(1, win) / 2);
+            return data.map((_, i) => {
+                let s = 0, c = 0;
+                for (let j = Math.max(0, i - h); j <= Math.min(N - 1, i + h); j++) { s += data[j]; c++; }
+                return s / c;
+            });
+        }
+
+        function medianFilt(data, win) {
+            const h = Math.floor(Math.max(1, win) / 2);
+            return data.map((_, i) => {
+                const buf = [];
+                for (let j = Math.max(0, i - h); j <= Math.min(N - 1, i + h); j++) buf.push(data[j]);
+                return buf.sort((a, b) => a - b)[Math.floor(buf.length / 2)];
+            });
+        }
+
+        function hampelFilt(data, win, nsigma) {
+            const h = Math.floor(Math.max(1, win) / 2);
+            return data.map((v, i) => {
+                const buf = [];
+                for (let j = Math.max(0, i - h); j <= Math.min(N - 1, i + h); j++) buf.push(data[j]);
+                buf.sort((a, b) => a - b);
+                const med = buf[Math.floor(buf.length / 2)];
+                const mad = buf.map(x => Math.abs(x - med)).sort((a, b) => a - b)[Math.floor(buf.length / 2)];
+                return Math.abs(v - med) > nsigma * 1.4826 * mad ? med : v;
+            });
+        }
+
+        function savgol(data, win) {
+            const h = Math.floor(Math.max(3, win) / 2);
+            return data.map((_, i) => {
+                let sw = 0, sv = 0;
+                for (let j = Math.max(0, i - h); j <= Math.min(N - 1, i + h); j++) {
+                    const d = h > 0 ? (j - i) / h : 0;
+                    const w = Math.exp(-2.5 * d * d);
+                    sw += w; sv += data[j] * w;
+                }
+                return sv / sw;
+            });
+        }
+
+        function simulate(type, raw, p) {
+            switch (type) {
+                case 'Butterworth':    return movAvg(raw, Math.max(2, Math.round((1 / p[1]) * N * 0.38 * (1 + (p[0] - 2) * 0.12))));
+                case 'Bessel':         return movAvg(raw, Math.max(2, Math.round((1 / p[1]) * N * 0.35 * (1 + (p[0] - 2) * 0.15))));
+                case 'Savitzky-Golay': return savgol(raw, p[1]);
+                case 'Moving Average': return movAvg(raw, Math.max(1, p[0]));
+                case 'Median':         return medianFilt(raw, Math.max(1, p[0]));
+                case 'Hampel':         return hampelFilt(raw, Math.max(1, p[0]), p[1]);
+                default:               return raw;
+            }
+        }
+
+        function toSvgPath(data, W, H, P) {
+            const mn = Math.min(...data), mx = Math.max(...data), rng = mx - mn || 1;
+            return data.map((v, i) => {
+                const x = P + (i / (data.length - 1)) * (W - P * 2);
+                const y = P + (1 - (v - mn) / rng) * (H - P * 2);
+                return (i === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1);
+            }).join(' ');
+        }
+
+        /* ── Filter-Metadaten ──────────────────────────────── */
+        const META = {
+            'Butterworth': {
+                badges: [['IIR', true], ['Max. Flach', false]],
+                desc: 'Maximiert die Flachheit im Durchlassband — kein Ripple. <strong>Leichter Phasenverzug</strong> verglichen mit Bessel, aber <strong>steiler Abfall</strong> bei gleicher Ordnung.',
+                einsatz: 'Allzweck-Standard: <strong>Fx, Fy, Fz, Mx, Mz</strong>. TTC-Preset: N=4 / fc=5–10 Hz mit filtfilt (Nullphase).',
+                params: [['N', '', 'Ordnung'], ['fc', 'Hz', 'Grenzfrequenz']],
+                stages: [{ p: [4, 5], note: 'Preset' }, { p: [2, 5], note: '↓N → sanfter' }, { p: [4, 10], note: '↑fc → schärfer' }, { p: [6, 5], note: '↑N → steiler' }],
+                spiky: false
+            },
+            'Bessel': {
+                badges: [['IIR', true], ['Linearphasig', false]],
+                desc: 'Maximiert die Flachheit der Gruppenlaufzeit → <strong>kein Phasenverzug</strong>. Peaks bleiben zeitlich exakt erhalten, auch bei hohen Filterordnungen.',
+                einsatz: 'Wenn die <strong>Lage des Peaks</strong> entscheidend ist: <strong>Fy, Fz, Mx, Mz</strong> — Kennfeld-x-Achse darf keinen Zeitversatz haben.',
+                params: [['N', '', 'Ordnung'], ['fc', 'Hz', 'Grenzfrequenz']],
+                stages: [{ p: [4, 5], note: 'Preset' }, { p: [2, 5], note: '↓N → sanfter' }, { p: [4, 10], note: '↑fc → schärfer' }, { p: [6, 5], note: '↑N → steiler' }],
+                spiky: false
+            },
+            'Savitzky-Golay': {
+                badges: [['FIR', true], ['Polynomfit', false]],
+                desc: 'Fittet lokal ein Polynom über <strong>win Samples</strong>. Glättet und erhält dabei <strong>Peak-Amplituden besser als IIR</strong>. Nullphase durch symmetrischen Kern.',
+                einsatz: 'Wenn <strong>absolute Kraftpeaks</strong> (Fy_max, Fz_max) exakt sein müssen. Sinnvoll für Post-Processing.',
+                params: [['Ord', '', 'Polynom-Grad'], ['Fen', 'S', 'Fensterlänge']],
+                stages: [{ p: [3, 11], note: 'Preset' }, { p: [2, 11], note: '↓Ord → sanfter' }, { p: [3, 21], note: '↑Fen → weicher' }, { p: [4, 11], note: '↑Ord → schärfer' }],
+                spiky: false
+            },
+            'Moving Average': {
+                badges: [['FIR', true], ['Box-Filter', false]],
+                desc: 'Arithmetisches Mittel über ein <strong>Fenster der Breite win</strong>. Einfachster Filter — <strong>reduziert Peak-Amplitude</strong> deutlich bei großen Fenstern.',
+                einsatz: 'Langsam veränderliche Signale: <strong>TtreadI, TtreadC, TtreadO, IP</strong>. Nicht für Kraftkanäle.',
+                params: [['Fen', 'S', 'Fensterlänge']],
+                stages: [{ p: [11], note: 'Preset' }, { p: [21], note: '↑Fen → weicher' }, { p: [51], note: 'Peaks gedämpft' }, { p: [101], note: 'Temp-Preset' }],
+                spiky: false
+            },
+            'Median': {
+                badges: [['Nichtlinear', true], ['Impulsrobust', false]],
+                desc: 'Ersetzt jeden Wert durch den <strong>Median des Fensters</strong>. Entfernt <strong>Impulsstörungen perfekt</strong> ohne kontinuierliche Peaks zu verschieben.',
+                einsatz: 'Winkelkanäle <strong>alpha, kappa</strong> — Encoder-Glitches werden vollständig entfernt.',
+                params: [['Fen', 'S', 'Fensterlänge (ungerade)']],
+                stages: [{ p: [5], note: 'Preset' }, { p: [3], note: '↓Fen → aggressiver' }, { p: [7], note: '↑Fen → breiter' }, { p: [11], note: 'Kanten verschmiert' }],
+                spiky: true
+            },
+            'Hampel': {
+                badges: [['Ausreißer', true], ['MAD-Robust', false]],
+                desc: 'Berechnet gleitenden Median + MAD. Ersetzt <strong>nur echte Ausreißer</strong> (> nσ × 1.48 × MAD) — normales Rauschen bleibt unangetastet.',
+                einsatz: '<strong>V, omega</strong> — CAN-Bus-Glitches. Deutlich gezielter als Median, erhält die Signaldynamik vollständig.',
+                params: [['Fen', 'S', 'Fensterlänge'], ['nσ', '', 'Sigma-Schwelle']],
+                stages: [{ p: [7, 3], note: 'Preset' }, { p: [7, 2], note: '↓nσ → mehr entfernt' }, { p: [15, 3], note: '↑Fen → robuster' }, { p: [7, 5], note: '↑nσ → konservativer' }],
+                spiky: true
+            }
+        };
+
+        /* ── Laufende Tooltip-Zustand ────────────────────── */
+        let activeTooltip = null;  /* DOM-Element des aktuell sichtbaren Tooltips */
+        let hoverRafId    = null;  /* rAF-ID des Fortschrittsbalkens              */
+        let hoverStart    = null;  /* Timestamp-Start des Hover                   */
+        let activeSel     = null;  /* aktuell gehovertes <select>-Element         */
+
+        const HOVER_DURATION = 3000; /* ms bis Tooltip erscheint */
+
+        /* ── Tooltip bauen ──────────────────────────────── */
+        function buildTooltip(type) {
+            const d = META[type];
+            if (!d) return null;
+
+            const W = 276, H = 68, P = 5;
+            const RAW = makeRaw(d.spiky);
+            const safeId = type.replace(/[\s\-\.]/g, '_');
+
+            const el = document.createElement('div');
+            el.className = 'ttc-tooltip';
+            el.innerHTML = `
+                <div class="ttc-accent"></div>
+                <div class="ttc-header">
+                    <span class="ttc-name">${type}</span>
+                    ${d.badges.map(([t, r]) =>
+                        `<span class="ttc-badge ${r ? 'ttc-badge-red' : 'ttc-badge-gray'}">${t}</span>`
+                    ).join('')}
+                </div>
+                <div class="ttc-body">
+                    <div class="ttc-desc">${d.desc}</div>
+                    <div class="ttc-ei-label">
+                        <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#c72229" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="9 18 15 12 9 6"/>
+                        </svg>
+                        Einsatz
+                    </div>
+                    <div class="ttc-ei-text">${d.einsatz}</div>
+                </div>
+                <div class="ttc-chart-wrap">
+                    <svg width="${W}" height="${H}">
+                        ${[0.25, 0.5, 0.75].map(t =>
+                            `<line x1="${P}" y1="${(P + t * (H - P * 2)).toFixed(1)}"
+                                  x2="${W - P}" y2="${(P + t * (H - P * 2)).toFixed(1)}"
+                                  stroke="#1c1c1c" stroke-width="1"/>`
+                        ).join('')}
+                        <path id="ttcR_${safeId}" fill="none" stroke="#333" stroke-width="1" stroke-linejoin="round"/>
+                        <path id="ttcF_${safeId}" fill="none" stroke="#c72229" stroke-width="1.8" stroke-linejoin="round"
+                            style="filter:drop-shadow(0 0 3px rgba(199,34,41,.45))"/>
+                    </svg>
+                </div>
+                <div class="ttc-pbar" id="ttcP_${safeId}">
+                    ${d.params.map((p, i) => `
+                        ${i > 0 ? '<div class="ttc-psep"></div>' : ''}
+                        <div class="ttc-pitem">
+                            <span class="ttc-pkey">${p[0]}</span>
+                            <span class="ttc-pval" id="ttcV${i}_${safeId}">${d.stages[0].p[i]}</span>
+                            ${p[1] ? `<span class="ttc-punit">${p[1]}</span>` : ''}
+                        </div>
+                    `).join('')}
+                    <span class="ttc-pnote" id="ttcN_${safeId}">${d.stages[0].note}</span>
+                </div>
+                <div class="ttc-footer">
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                    <span class="ttc-footer-txt">3 s Hover — dann erscheint der Tooltip</span>
+                </div>
+            `;
+            document.body.appendChild(el);
+
+            /* Initiale Chart-Pfade */
+            const rawPath  = document.getElementById('ttcR_' + safeId);
+            const filtPath = document.getElementById('ttcF_' + safeId);
+            if (rawPath)  rawPath.setAttribute('d',  toSvgPath(RAW, W, H, P));
+            if (filtPath) filtPath.setAttribute('d', toSvgPath(simulate(type, RAW, d.stages[0].p), W, H, P));
+
+            /* Parameter-Morphing-Animation zwischen den 4 Stufen */
+            let stageIdx = 0, nextIdx = 1, stageTs = null, animRafId = null;
+            const STAGE_DUR = 2200; /* ms je Stufe */
+
+            function animStep(ts) {
+                if (!stageTs) stageTs = ts;
+                const cur  = d.stages[stageIdx];
+                const next = d.stages[nextIdx];
+                const raw  = Math.min((ts - stageTs) / STAGE_DUR, 1);
+                const ease = raw < 0.5 ? 2 * raw * raw : -1 + (4 - 2 * raw) * raw;
+
+                /* Gefilterten Pfad morphen */
+                const cFilt = simulate(type, RAW, cur.p);
+                const nFilt = simulate(type, RAW, next.p);
+                const morphed = cFilt.map((v, i) => v + (nFilt[i] - v) * ease);
+                if (filtPath) filtPath.setAttribute('d', toSvgPath(morphed, W, H, P));
+
+                /* Parameter-Werte interpolieren */
+                d.params.forEach((_, pi) => {
+                    const vEl = document.getElementById('ttcV' + pi + '_' + safeId);
+                    if (vEl) vEl.textContent = Math.round(cur.p[pi] + (next.p[pi] - cur.p[pi]) * ease);
+                });
+
+                /* Stufe wechseln wenn fertig */
+                if (raw >= 1) {
+                    stageIdx = nextIdx;
+                    nextIdx  = (nextIdx + 1) % d.stages.length;
+                    stageTs  = ts;
+                    const nEl = document.getElementById('ttcN_' + safeId);
+                    if (nEl) nEl.textContent = d.stages[stageIdx].note;
+                }
+                animRafId = requestAnimationFrame(animStep);
+            }
+            animRafId = requestAnimationFrame(animStep);
+            el._ttcStop = () => cancelAnimationFrame(animRafId);
+            return el;
+        }
+
+        function positionTooltip(el, refEl) {
+            const rect = refEl.getBoundingClientRect();
+            const TW = 302, TH = 370;
+            let left = rect.right + 10;
+            if (left + TW > window.innerWidth - 6) left = rect.left - TW - 10;
+            let top = rect.top - 10;
+            if (top + TH > window.innerHeight - 6) top = window.innerHeight - TH - 6;
+            if (top < 6) top = 6;
+            el.style.left = left + 'px';
+            el.style.top  = top + 'px';
+        }
+
+        function hideTooltip() {
+            if (activeTooltip) {
+                if (activeTooltip._ttcStop) activeTooltip._ttcStop();
+                activeTooltip.remove();
+                activeTooltip = null;
+            }
+            if (hoverRafId) { cancelAnimationFrame(hoverRafId); hoverRafId = null; }
+            hoverStart = null;
+            activeSel  = null;
+        }
+
+        /* ── Listener-Bindung nach jedem renderAll() ──────── */
+        function attachListeners() {
+            /* Alle Wrapper mit Fortschrittsbalken ausstatten */
+            document.querySelectorAll('.ttc-select-wrap').forEach(wrap => {
+                /* Alten Fortschrittsbalken entfernen */
+                wrap.querySelectorAll('.ttc-progress').forEach(b => b.remove());
+                const bar = document.createElement('div');
+                bar.className = 'ttc-progress';
+                wrap.appendChild(bar);
+
+                const sel = wrap.querySelector('select[data-ttc-type]');
+                if (!sel) return;
+
+                /* Clone-Trick: alte inline-Handler raus, neue rein */
+                const fresh = sel.cloneNode(true);
+                sel.parentNode.replaceChild(fresh, sel);
+                wrap.appendChild(bar); /* bar bleibt im wrap */
+
+                fresh.addEventListener('mouseenter', function () {
+                    if (activeSel === fresh) return; /* bereits aktiv */
+                    hideTooltip();
+                    activeSel  = fresh;
+                    hoverStart = null;
+                    bar.style.width = '0%';
+
+                    function tickBar(ts) {
+                        if (!hoverStart) hoverStart = ts;
+                        const progress = Math.min((ts - hoverStart) / HOVER_DURATION, 1);
+                        bar.style.width = (progress * 100) + '%';
+
+                        if (progress < 1) {
+                            hoverRafId = requestAnimationFrame(tickBar);
+                        } else {
+                            hoverRafId = null;
+                            /* Tooltip anzeigen */
+                            const type = fresh.dataset.ttcType || fresh.value;
+                            activeTooltip = buildTooltip(type);
+                            if (activeTooltip) {
+                                positionTooltip(activeTooltip, fresh);
+                                requestAnimationFrame(() => activeTooltip.classList.add('visible'));
+                            }
+                        }
+                    }
+                    hoverRafId = requestAnimationFrame(tickBar);
+                });
+
+                fresh.addEventListener('mouseleave', function () {
+                    bar.style.transition = 'width 0.25s ease';
+                    bar.style.width = '0%';
+                    setTimeout(() => { bar.style.transition = ''; }, 260);
+                    hideTooltip();
+                });
+
+                /* data-ttc-type synchron halten bei Wert-Änderung */
+                fresh.addEventListener('change', function () {
+                    fresh.dataset.ttcType = fresh.value;
+                });
+            });
+        }
+
+        return { attachListeners };
+    })();
 </script>
 </body>
 </html>
