@@ -343,7 +343,7 @@
             overflow: hidden;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
             opacity: 0;
-            transform: translateX(-6px);   /* Einblenden von links nach rechts (Tooltip sitzt rechts) */
+            transform: translateX(-6px);
             transition: opacity 0.18s ease, transform 0.18s ease;
         }
         .ttc-tooltip.visible {
@@ -1022,24 +1022,12 @@
 
         function positionTooltip(el, refEl) {
             const rect = refEl.getBoundingClientRect();
-            const TW = 302, TH = 370;   /* Tooltip-Groesse inkl. Border */
-            const GAP = 10, MARGIN = 6; /* Abstand zum Select / zum Viewport-Rand */
-
-            /* ── Horizontal: immer rechts vom Select, niemals nach links kippen ──
-               Frueher wurde bei Platzmangel auf die linke Seite gespiegelt.
-               Bei linksbuendiger Sidebar landete der Tooltip dadurch ausserhalb
-               des Bildschirms. Jetzt wird stattdessen an den rechten Rand
-               geklemmt, sodass er immer vollstaendig sichtbar bleibt. */
-            let left = rect.right + GAP;
-            const maxLeft = window.innerWidth - TW - MARGIN;
-            if (left > maxLeft) left = maxLeft;
-            if (left < MARGIN) left = MARGIN;
-
-            /* ── Vertikal: an der Oberkante des Select ausrichten, in Viewport klemmen ── */
-            let top = rect.top - GAP;
-            if (top + TH > window.innerHeight - MARGIN) top = window.innerHeight - TH - MARGIN;
-            if (top < MARGIN) top = MARGIN;
-
+            const TW = 302, TH = 370;
+            let left = rect.right + 10;
+            if (left + TW > window.innerWidth - 6) left = rect.left - TW - 10;
+            let top = rect.top - 10;
+            if (top + TH > window.innerHeight - 6) top = window.innerHeight - TH - 6;
+            if (top < 6) top = 6;
             el.style.left = left + 'px';
             el.style.top  = top + 'px';
         }
